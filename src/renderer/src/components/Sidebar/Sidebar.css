@@ -1,0 +1,54 @@
+.sidebar {
+    width: 260px;
+    height: 100vh;
+    background-color: #252526;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #333;
+}
+
+.sidebar-header {
+    padding: 10px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #1e1e1e;
+    color: #007acc;
+}
+
+.tree-viewport {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-top: 5px;
+}
+
+.tree-node {
+    display: flex;
+    align-items: center;
+    padding: 4px 5px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    color: #cccccc;
+    transition: background 0.1s;
+}
+
+.tree-node:hover {
+    background-color: #2a2d2e;
+}
+
+.tree-node .icon {
+    margin-right: 6px;
+    font-size: 14px;
+}
+
+.icon-btn {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.icon-btn:hover { color: white; }
