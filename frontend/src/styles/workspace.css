@@ -1,0 +1,127 @@
+/* ========================= */
+/* 🧠 MAIN LAYOUT */
+/* ========================= */
+.workspace {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: #1B365D;
+}
+
+/* ========================= */
+/* 🧭 ACTIVITY BAR */
+/* ========================= */
+.activity-bar {
+  width: 55px;
+  background: #162D4D;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+  border-right: 1px solid rgba(168,195,209,0.15);
+}
+
+.activity-bar div {
+  padding: 14px;
+  cursor: pointer;
+  color: #A8C3D1;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.activity-bar div:hover {
+  background: rgba(92,141,193,0.2);
+  color: white;
+}
+
+.activity-bar .active {
+  background: linear-gradient(135deg, #2E5B9A, #5C8DC1);
+  color: white;
+}
+
+/* ========================= */
+/* 📁 SIDEBAR */
+/* ========================= */
+.sidebar {
+  width: 260px;
+  background: #1E3A63;
+  padding: 10px;
+  border-right: 1px solid rgba(168,195,209,0.15);
+  overflow-y: auto;
+}
+
+/* ========================= */
+/* 🧠 MAIN AREA */
+/* ========================= */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ========================= */
+/* 🔝 TOP BAR */
+/* ========================= */
+.topbar {
+  height: 45px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  background: #162D4D;
+  border-bottom: 1px solid rgba(168,195,209,0.15);
+}
+
+/* ========================= */
+/* 📝 EDITOR */
+/* ========================= */
+.editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 🔥 FIX */
+.editor-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.editor-content > * {
+  flex: 1;
+}
+
+/* Empty */
+.empty {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #A8C3D1;
+}
+
+/* ========================= */
+/* 📦 VIEW */
+/* ========================= */
+.view {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+}
+
+/* ========================= */
+/* 🖱 CONTEXT MENU */
+/* ========================= */
+.context-menu {
+  position: fixed;
+  background: #1E3A63;
+  border-radius: 10px;
+  padding: 6px;
+  border: 1px solid rgba(168,195,209,0.2);
+  z-index: 1000;
+}
