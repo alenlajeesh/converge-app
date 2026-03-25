@@ -1,73 +1,75 @@
-body {
-  margin: 0;
-  font-family: sans-serif;
-}
-
-.container {
-  height: 100vh;
+.dashboard {
+  min-height: 100vh; /* 🔥 FIXED (was height: 100%) */
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #1e1e2f, #12121a);
-  color: white;
+  background: linear-gradient(135deg, #1B365D, #2E5B9A);
 }
 
-.card {
-  padding: 40px;
-  border-radius: 16px;
-  background: #1f1f2e;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  text-align: center;
-  width: 400px;
+.dashboard-card {
+  width: 420px;
+  padding: 35px;
+
+  border-radius: 18px;
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(14px);
+
+  border: 1px solid rgba(168,195,209,0.2);
 }
 
-.title {
+.dashboard-title {
+  font-size: 26px;
   margin-bottom: 10px;
-  font-size: 28px;
 }
 
-.subtitle {
-  margin-bottom: 30px;
-  color: #aaa;
+.dashboard-subtitle {
+  color: #A8C3D1;
+  margin-bottom: 25px;
 }
 
-.buttonContainer {
+.dashboard-actions {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
 }
 
-/* BUTTON BASE */
-.btn {
+/* Workspace list */
+.workspace-list {
+  margin-top: 20px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.workspace-item {
   padding: 12px;
-  font-size: 16px;
-  border-radius: 8px;
+  margin-top: 10px;
+
+  border-radius: 10px;
+  background: rgba(92,141,193,0.1);
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: 0.2s;
 }
 
-/* PRIMARY BUTTON */
-.btn.primary {
-  background: #4f46e5;
-  color: white;
-  border: none;
+.workspace-item:hover {
+  background: rgba(92,141,193,0.25);
 }
 
-.btn.primary:hover {
-  background: #6366f1;
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(79, 70, 229, 0.4);
+.workspace-info p {
+  font-size: 12px;
+  color: #A8C3D1;
 }
 
-/* SECONDARY BUTTON */
-.btn.secondary {
+.delete-btn {
   background: transparent;
-  border: 1px solid #555;
-  color: white;
+  color: #ff6b6b;
+  cursor: pointer;
 }
 
-.btn.secondary:hover {
-  background: #2a2a3d;
-  border-color: #777;
-  transform: translateY(-2px);
+.delete-btn:hover {
+  background: rgba(255,0,0,0.2);
 }
