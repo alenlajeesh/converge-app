@@ -1,0 +1,94 @@
+/* Page container */
+.create-container {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: radial-gradient(circle at top, #1e3a5f, #0f1c2e);
+  font-family: "Inter", sans-serif;
+  color: #ffffff;
+}
+
+/* Card */
+.create-card {
+  width: 460px;
+  padding: 32px;
+
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* Title */
+.create-title {
+  font-size: 26px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+/* Subtitle */
+.create-subtitle {
+  font-size: 14px;
+  color: #9fb3c8;
+  margin-bottom: 25px;
+}
+
+/* Input groups */
+.input-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 18px;
+}
+
+.input-group label {
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: #cbd5e1;
+}
+
+/* Inputs */
+.input-group input {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.input-group input::placeholder {
+  color: #64748b;
+}
+
+.input-group input:focus {
+  border: 1px solid rgba(59, 130, 246, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Folder select */
+.folder-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.folder-path {
+  font-size: 12px;
+  color: #94a3b8;
+  word-break: break-all;
+}
+
+/* Buttons area */
+.create-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

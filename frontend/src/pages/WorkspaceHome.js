@@ -34,18 +34,32 @@ function WorkspaceHome() {
     node: null,
   });
 
-  // 🌲 Build tree
-  const buildTree = async (dirPath) => {
-    const items = await window.api.readDir(dirPath);
+  // 🔐 Redirect if no workspace
+  useEffect(() => {
+    if (!rootPath) {
+      navigate("/");
+    }
+  }, [rootPath, navigate]);
 
-    return items.map((item) => ({
-      ...item,
-      children: item.isDir ? [] : undefined,
-    }));
+  // 🌲 Build directory tree
+  const buildTree = async (dirPath) => {
+    try {
+      const items = await window.api.readDir(dirPath);
+
+      return items.map((item) => ({
+        ...item,
+        children: item.isDir ? [] : undefined,
+      }));
+    } catch (err) {
+      console.error("Error reading directory:", err);
+      return [];
+    }
   };
 
-  // 📂 Load root
+  // 📂 Load root directory
   const loadRoot = async () => {
+    if (!rootPath) return;
+
     const children = await buildTree(rootPath);
 
     setTree([
@@ -66,26 +80,37 @@ function WorkspaceHome() {
     }
   }, [rootPath]);
 
-  // 📂 Expand folder
+  // 📂 Toggle folder
   const toggleFolder = async (item) => {
     if (!item.isDir) return;
 
     const isOpen = expanded[item.path];
 
     if (isOpen) {
-      setExpanded({ ...expanded, [item.path]: false });
+      setExpanded((prev) => ({
+        ...prev,
+        [item.path]: false,
+      }));
     } else {
       const children = await buildTree(item.path);
 
       const updateTree = (nodes) =>
         nodes.map((n) => {
-          if (n.path === item.path) return { ...n, children };
-          if (n.children) return { ...n, children: updateTree(n.children) };
+          if (n.path === item.path) {
+            return { ...n, children };
+          }
+          if (n.children) {
+            return { ...n, children: updateTree(n.children) };
+          }
           return n;
         });
 
-      setTree(updateTree(tree));
-      setExpanded({ ...expanded, [item.path]: true });
+      setTree((prev) => updateTree(prev));
+
+      setExpanded((prev) => ({
+        ...prev,
+        [item.path]: true,
+      }));
     }
   };
 
@@ -93,22 +118,30 @@ function WorkspaceHome() {
   const openFile = async (file) => {
     if (file.isDir) return;
 
-    const data = await window.api.readFile(file.path);
+    try {
+      const data = await window.api.readFile(file.path);
 
-    setSelectedFile(file.path);
-    setContent(data);
+      setSelectedFile(file.path);
+      setContent(data);
 
-    setOpenFiles((prev) => {
-      if (prev.includes(file.path)) return prev;
-      return [...prev, file.path];
-    });
+      setOpenFiles((prev) => {
+        if (prev.includes(file.path)) return prev;
+        return [...prev, file.path];
+      });
+    } catch (err) {
+      console.error("Error opening file:", err);
+    }
   };
 
   // 🔄 Switch tab
   const setActiveFile = async (filePath) => {
-    const data = await window.api.readFile(filePath);
-    setSelectedFile(filePath);
-    setContent(data);
+    try {
+      const data = await window.api.readFile(filePath);
+      setSelectedFile(filePath);
+      setContent(data);
+    } catch (err) {
+      console.error("Error switching file:", err);
+    }
   };
 
   // ❌ Close tab
@@ -126,7 +159,7 @@ function WorkspaceHome() {
     }
   };
 
-  // 🖱 Context actions
+  // 🖱 Context menu actions
   const handleContextAction = async (action) => {
     const node = contextMenu.node;
     if (!node) return;
@@ -135,37 +168,41 @@ function WorkspaceHome() {
       ? node.path
       : node.path.substring(0, node.path.lastIndexOf("/"));
 
-    if (action === "newFile") {
-      await window.api.createFile(parentPath + "/newFile");
+    try {
+      if (action === "newFile") {
+        await window.api.createFile(parentPath + "/newFile");
+      }
+
+      if (action === "newFolder") {
+        await window.api.createFolder(parentPath + "/newFolder");
+      }
+
+      if (action === "rename") {
+        const newName = prompt("Enter new name");
+        if (!newName) return;
+
+        const newPath = parentPath + "/" + newName;
+        await window.api.renamePath(node.path, newPath);
+      }
+
+      if (action === "delete") {
+        await window.api.deletePath(node.path);
+      }
+
+      await loadRoot();
+    } catch (err) {
+      console.error("Context action failed:", err);
     }
 
-    if (action === "newFolder") {
-      await window.api.createFolder(parentPath + "/newFolder");
-    }
-
-    if (action === "rename") {
-      const newName = prompt("Enter new name");
-      if (!newName) return;
-
-      const newPath = parentPath + "/" + newName;
-      await window.api.renamePath(node.path, newPath);
-    }
-
-    if (action === "delete") {
-      await window.api.deletePath(node.path);
-    }
-
-    loadRoot();
-    setContextMenu({ ...contextMenu, visible: false });
+    setContextMenu((prev) => ({ ...prev, visible: false }));
   };
 
   return (
     <div className="workspace">
-
       {/* LEFT ICON BAR */}
       <ActivityBar active={activeView} setActive={setActiveView} />
 
-      {/* SIDEBAR ALWAYS VISIBLE */}
+      {/* SIDEBAR */}
       <Sidebar
         tree={tree}
         expanded={expanded}
@@ -177,21 +214,21 @@ function WorkspaceHome() {
 
       {/* MAIN AREA */}
       <div className="main-area">
-
-        {/* 🔝 TOP BAR */}
+        {/* TOP BAR */}
         <div className="topbar">
-			<span className="workspace-name">
-				{rootPath?.split("/").pop()}
-			</span>
+          <span className="workspace-name">
+            {rootPath?.split("/").pop()}
+          </span>
 
-			<button
-				className="back-btn"
-				onClick={() => navigate("/")}
-			>
-			← Back
-			</button>
-		</div>
-        {/* 🔄 SWITCHED CONTENT */}
+          <button
+            className="back-btn"
+            onClick={() => navigate("/")}
+          >
+            ← Back
+          </button>
+        </div>
+
+        {/* VIEWS */}
         {activeView === "explorer" && (
           <Editor
             selectedFile={selectedFile}
@@ -208,13 +245,13 @@ function WorkspaceHome() {
         {activeView === "video" && <VideoView />}
       </div>
 
-      {/* 🖱 CONTEXT MENU */}
+      {/* CONTEXT MENU */}
       <ContextMenu
         x={contextMenu.x}
         y={contextMenu.y}
         visible={contextMenu.visible}
         onClose={() =>
-          setContextMenu({ ...contextMenu, visible: false })
+          setContextMenu((prev) => ({ ...prev, visible: false }))
         }
         onAction={handleContextAction}
       />

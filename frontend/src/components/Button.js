@@ -4,7 +4,7 @@ import "../styles/dashboard.css";
 function Button({ children, variant = "primary", onClick }) {
   return (
     <button
-      className={`btn ${variant}`}
+      className={`btn btn-${variant}`}
       onClick={onClick}
     >
       {children}

@@ -1,75 +1,157 @@
+/* Root dashboard */
 .dashboard {
-  min-height: 100vh; /* 🔥 FIXED (was height: 100%) */
+  min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #1B365D, #2E5B9A);
+
+  background: radial-gradient(circle at top, #1e3a5f, #0f1c2e);
+  font-family: "Inter", sans-serif;
+  color: #ffffff;
 }
 
+/* Card container */
 .dashboard-card {
-  width: 420px;
-  padding: 35px;
+  width: 460px;
+  padding: 32px;
 
-  border-radius: 18px;
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(14px);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
 
-  border: 1px solid rgba(168,195,209,0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
 }
 
+/* Title */
 .dashboard-title {
-  font-size: 26px;
-  margin-bottom: 10px;
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 6px;
 }
 
+/* Subtitle */
 .dashboard-subtitle {
-  color: #A8C3D1;
+  font-size: 14px;
+  color: #9fb3c8;
   margin-bottom: 25px;
 }
 
+/* Buttons container */
 .dashboard-actions {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-/* Workspace list */
-.workspace-list {
-  margin-top: 20px;
-  max-height: 220px;
-  overflow-y: auto;
+/* Buttons */
+.btn {
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+
+  border: none;
+  cursor: pointer;
+
+  transition: all 0.2s ease;
 }
 
+/* Primary button */
+.btn-primary {
+  background: linear-gradient(135deg, #3a8bfd, #2563eb);
+  color: white;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.4);
+}
+
+/* Secondary button */
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Workspace list */
+.workspace-list {
+  margin-top: 25px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Empty text */
+.empty-text {
+  text-align: center;
+  color: #7c93a8;
+  font-size: 13px;
+}
+
+/* Workspace item */
 .workspace-item {
-  padding: 12px;
+  padding: 14px;
   margin-top: 10px;
 
-  border-radius: 10px;
-  background: rgba(92,141,193,0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
 
   display: flex;
   justify-content: space-between;
   align-items: center;
 
   cursor: pointer;
-  transition: 0.2s;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
 }
 
 .workspace-item:hover {
-  background: rgba(92,141,193,0.25);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Workspace info */
+.workspace-info strong {
+  font-size: 15px;
+  display: block;
 }
 
 .workspace-info p {
   font-size: 12px;
-  color: #A8C3D1;
+  color: #94a3b8;
+  margin-top: 4px;
+  word-break: break-all;
 }
 
+/* Delete button */
 .delete-btn {
   background: transparent;
-  color: #ff6b6b;
+  border: none;
+  font-size: 16px;
+  color: #f87171;
+  padding: 6px 10px;
+  border-radius: 6px;
+
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .delete-btn:hover {
-  background: rgba(255,0,0,0.2);
+  background: rgba(248, 113, 113, 0.2);
+}
+
+/* Scrollbar */
+.workspace-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.workspace-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
 }
