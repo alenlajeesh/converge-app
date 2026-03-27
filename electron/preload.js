@@ -24,4 +24,6 @@ contextBridge.exposeInMainWorld("api", {
 	deletePath: (targetPath) => ipcRenderer.invoke("delete-path", targetPath),
 	renamePath: (oldPath, newPath) =>
 		ipcRenderer.invoke("rename-path", oldPath, newPath),
+	runCommand: (command, cwd) =>
+		ipcRenderer.invoke("run-command", command, cwd),
 });

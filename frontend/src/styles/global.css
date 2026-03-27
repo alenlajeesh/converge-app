@@ -5,7 +5,7 @@
   box-sizing: border-box;
 }
 
-/* FULL HEIGHT */
+/* ROOT */
 html, body, #root {
   height: 100%;
   width: 100%;
@@ -14,23 +14,6 @@ html, body, #root {
 /* BODY */
 body {
   font-family: "Inter", sans-serif;
-  background: #1B365D;
-  color: #EAF3FF;
-}
-
-/* ROOT FIX */
-#root {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-/* Prevent flex overflow bugs */
-div {
-  min-height: 0;
-}
-
-/* Inputs */
-button, input, textarea {
-  font-family: inherit;
+  background: #0f172a;
+  color: #e2e8f0;
 }
