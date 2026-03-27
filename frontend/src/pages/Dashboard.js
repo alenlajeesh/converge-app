@@ -13,7 +13,7 @@ function Dashboard() {
 
   const loadWorkspaces = async () => {
     const data = await window.api.getWorkspaces();
-    setWorkspaces(data);
+    setWorkspaces(data || []);
   };
 
   const openExisting = async () => {
@@ -36,9 +36,9 @@ function Dashboard() {
   return (
     <div className="dashboard">
       <div className="dashboard-card">
-        <h1 className="dashboard-title">Workspace Dashboard</h1>
+        <h1 className="dashboard-title">Workspaces</h1>
         <p className="dashboard-subtitle">
-          Manage your workspaces
+          Open, create and manage your development environments
         </p>
 
         <div className="dashboard-actions">

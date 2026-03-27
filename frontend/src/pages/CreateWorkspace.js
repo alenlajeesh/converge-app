@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Button from "../components/Button";
+import "../styles/createWorkspace.css";
 
 function CreateWorkspace() {
   const [name, setName] = useState("");
@@ -32,35 +33,61 @@ function CreateWorkspace() {
   };
 
   return (
-    <div className="container">
-      <div className="card">
-        <h2>Create Workspace</h2>
+    <div className="create-container">
+      <div className="create-card">
+        <h2 className="create-title">Create Workspace</h2>
+        <p className="create-subtitle">
+          Set up a new development workspace
+        </p>
 
-        <input
-          placeholder="Workspace Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-
-        <div style={{ marginTop: "10px" }}>
-          <Button onClick={selectFolder}>
-            Select Location
-          </Button>
-          <p>{location}</p>
+        {/* Name */}
+        <div className="input-group">
+          <label>Workspace Name</label>
+          <input
+            type="text"
+            placeholder="My Project"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </div>
 
-        <input
-          placeholder="GitHub Repo (optional)"
-          value={github}
-          onChange={(e) => setGithub(e.target.value)}
-        />
+        {/* Location */}
+        <div className="input-group">
+          <label>Location</label>
+          <div className="folder-select">
+            <Button onClick={selectFolder}>
+              Select Folder
+            </Button>
+            <span className="folder-path">
+              {location || "No folder selected"}
+            </span>
+          </div>
+        </div>
 
-        <Button onClick={createWorkspace}>
-          Create
-        </Button>
-		<Button variant="secondary" onClick={() => navigate("/")}>
-			← Back
-		</Button>
+        {/* GitHub */}
+        <div className="input-group">
+          <label>GitHub Repo (optional)</label>
+          <input
+            type="text"
+            placeholder="https://github.com/user/repo"
+            value={github}
+            onChange={(e) => setGithub(e.target.value)}
+          />
+        </div>
+
+        {/* Actions */}
+        <div className="create-actions">
+          <Button onClick={createWorkspace}>
+            Create Workspace
+          </Button>
+
+          <Button
+            variant="secondary"
+            onClick={() => navigate("/")}
+          >
+            ← Back
+          </Button>
+        </div>
       </div>
     </div>
   );
