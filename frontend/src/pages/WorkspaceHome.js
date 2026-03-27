@@ -5,6 +5,7 @@ import ActivityBar from "../components/ActivityBar";
 import Sidebar from "../components/Sidebar";
 import Editor from "../components/Editor";
 import ContextMenu from "../components/ContextMenu";
+import Terminal from "../components/Terminal";
 
 import ChatView from "../components/ChatView";
 import CallView from "../components/CallView";
@@ -16,9 +17,10 @@ function WorkspaceHome() {
   const { state } = useLocation();
   const navigate = useNavigate();
 
-  const rootPath = state?.path;
+  const rootPath = state?.repoPath || state?.path;
 
   const [tree, setTree] = useState([]);
+  const [showTerminal, setShowTerminal] = useState(true);
   const [expanded, setExpanded] = useState({});
   const [selectedFile, setSelectedFile] = useState(null);
   const [content, setContent] = useState("");
@@ -196,29 +198,36 @@ function WorkspaceHome() {
 
     setContextMenu((prev) => ({ ...prev, visible: false }));
   };
+	return (
+  <div className="workspace">
+    {/* LEFT ICON BAR */}
+    <ActivityBar active={activeView} setActive={setActiveView} />
 
-  return (
-    <div className="workspace">
-      {/* LEFT ICON BAR */}
-      <ActivityBar active={activeView} setActive={setActiveView} />
+    {/* SIDEBAR */}
+    <Sidebar
+      tree={tree}
+      expanded={expanded}
+      toggleFolder={toggleFolder}
+      openFile={openFile}
+      setSelectedDir={setSelectedDir}
+      setContextMenu={setContextMenu}
+    />
 
-      {/* SIDEBAR */}
-      <Sidebar
-        tree={tree}
-        expanded={expanded}
-        toggleFolder={toggleFolder}
-        openFile={openFile}
-        setSelectedDir={setSelectedDir}
-        setContextMenu={setContextMenu}
-      />
+    {/* MAIN AREA */}
+    <div className="main-area">
+      {/* TOP BAR */}
+      <div className="topbar">
+        <span className="workspace-name">
+          {rootPath?.split("/").pop()}
+        </span>
 
-      {/* MAIN AREA */}
-      <div className="main-area">
-        {/* TOP BAR */}
-        <div className="topbar">
-          <span className="workspace-name">
-            {rootPath?.split("/").pop()}
-          </span>
+        <div className="topbar-actions">
+          <button
+            className="terminal-toggle"
+            onClick={() => setShowTerminal(!showTerminal)}
+          >
+            Terminal
+          </button>
 
           <button
             className="back-btn"
@@ -227,8 +236,10 @@ function WorkspaceHome() {
             ← Back
           </button>
         </div>
+      </div>
 
-        {/* VIEWS */}
+      {/* CONTENT */}
+      <div className="editor-area">
         {activeView === "explorer" && (
           <Editor
             selectedFile={selectedFile}
@@ -245,18 +256,28 @@ function WorkspaceHome() {
         {activeView === "video" && <VideoView />}
       </div>
 
-      {/* CONTEXT MENU */}
-      <ContextMenu
-        x={contextMenu.x}
-        y={contextMenu.y}
-        visible={contextMenu.visible}
-        onClose={() =>
-          setContextMenu((prev) => ({ ...prev, visible: false }))
-        }
-        onAction={handleContextAction}
-      />
+      {/* TERMINAL */}
+      {showTerminal && (
+		<Terminal
+			rootPath={rootPath}
+			onClose={() => setShowTerminal(false)}
+		/>
+)}
     </div>
-  );
+
+    {/* CONTEXT MENU */}
+    <ContextMenu
+      x={contextMenu.x}
+      y={contextMenu.y}
+      visible={contextMenu.visible}
+      onClose={() =>
+        setContextMenu((prev) => ({ ...prev, visible: false }))
+      }
+      onAction={handleContextAction}
+    />
+  </div>
+);
+
 }
 
 export default WorkspaceHome;

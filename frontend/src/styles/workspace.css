@@ -1,21 +1,27 @@
 /* ROOT */
 .workspace {
+  position: fixed;
+  inset: 0;
+
   display: flex;
-  height: 100vh;
   background: #0f172a;
   color: #e2e8f0;
   font-family: "Inter", sans-serif;
+
+  overflow: hidden;
 }
 
 /* ACTIVITY BAR */
 .activity-bar {
   width: 55px;
   background: #020617;
+
   display: flex;
   flex-direction: column;
   align-items: center;
   padding-top: 15px;
   gap: 20px;
+
   border-right: 1px solid rgba(255,255,255,0.05);
 }
 
@@ -24,8 +30,8 @@
   cursor: pointer;
   padding: 10px;
   border-radius: 10px;
-  transition: 0.2s;
   color: #64748b;
+  transition: 0.2s;
 }
 
 .activity-bar div:hover {
@@ -42,29 +48,33 @@
 .sidebar {
   width: 260px;
   background: #020617;
-  border-right: 1px solid rgba(255,255,255,0.05);
+
   display: flex;
   flex-direction: column;
+
+  border-right: 1px solid rgba(255,255,255,0.05);
+
+  min-height: 0;
 }
 
 .sidebar h3 {
   font-size: 12px;
-  letter-spacing: 1px;
   padding: 12px;
   color: #94a3b8;
 }
 
+/* TREE */
 .tree {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
-/* TREE NODE */
 .tree-node {
   padding: 6px 10px;
-  cursor: pointer;
   font-size: 13px;
   border-radius: 6px;
+  cursor: pointer;
   transition: 0.15s;
 }
 
@@ -72,22 +82,29 @@
   background: rgba(59,130,246,0.2);
 }
 
-/* MAIN AREA */
+/* MAIN */
 .main-area {
   flex: 1;
   display: flex;
   flex-direction: column;
+
+  min-width: 0;
+  min-height: 0;
 }
 
-/* TOP BAR */
+/* TOPBAR */
 .topbar {
   height: 40px;
   background: #020617;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 15px;
+
   border-bottom: 1px solid rgba(255,255,255,0.05);
+
+  flex-shrink: 0;
 }
 
 .workspace-name {
@@ -95,22 +112,37 @@
   color: #94a3b8;
 }
 
-.back-btn {
-  background: transparent;
-  border: none;
-  color: #60a5fa;
+.topbar-actions button {
+  margin-left: 10px;
+  background: #0f172a;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #cbd5f5;
+  padding: 5px 10px;
+  border-radius: 6px;
   cursor: pointer;
+  transition: 0.2s;
 }
 
-.back-btn:hover {
-  text-decoration: underline;
+.topbar-actions button:hover {
+  background: #1e293b;
+  color: white;
 }
 
-/* EDITOR */
-.editor {
+/* EDITOR AREA */
+.editor-area {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
+
+  min-height: 0;
+}
+
+/* EDITOR WRAPPER (🔥 IMPORTANT FIX) */
+.editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* TABS */
@@ -118,17 +150,22 @@
   display: flex;
   background: #020617;
   border-bottom: 1px solid rgba(255,255,255,0.05);
+
+  flex-shrink: 0;
 }
 
 .tab {
   padding: 8px 14px;
   font-size: 13px;
+  color: #94a3b8;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: #94a3b8;
-  border-right: 1px solid rgba(255,255,255,0.05);
+  gap: 6px;
+}
+
+.tab:hover {
+  background: #1e293b;
 }
 
 .tab.active {
@@ -136,123 +173,112 @@
   color: white;
 }
 
-.tab:hover {
-  background: rgba(59,130,246,0.2);
-}
-
-.close {
-  font-size: 12px;
-  opacity: 0.6;
-}
-
-.close:hover {
-  opacity: 1;
-}
-
 /* EDITOR CONTENT */
 .editor-content {
   flex: 1;
+  display: flex;
+
+  min-height: 0;
   overflow: hidden;
+}
+
+/* 🔥 CRITICAL FOR MONACO */
+.editor-content > * {
+  flex: 1;
 }
 
 /* EMPTY STATE */
 .empty {
   display: flex;
-  justify-content: center;
   align-items: center;
-  height: 100%;
+  justify-content: center;
   color: #64748b;
+  font-size: 14px;
 }
 
-/* CONTEXT MENU */
+/* TERMINAL */
+.terminal {
+  height: 220px;
+  background: #020617;
+
+  display: flex;
+  flex-direction: column;
+
+  border-top: 1px solid rgba(255,255,255,0.08);
+
+  flex-shrink: 0;
+}
+
+/* TERMINAL HEADER */
+.terminal-header {
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+
+  font-size: 12px;
+  color: #94a3b8;
+
+  flex-shrink: 0;
+}
+
+/* OUTPUT */
+.terminal-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  font-size: 13px;
+
+  min-height: 0;
+}
+
+/* INPUT */
+.terminal-input {
+  display: flex;
+  padding: 8px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.terminal-input input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: white;
+}
+
+/* 🔥 CONTEXT MENU FIX */
 .context-menu {
-  position: absolute;
-  background: rgba(15,23,42,0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 10px;
-  padding: 6px;
-  min-width: 140px;
-  z-index: 100;
+  position: fixed; /* CRITICAL */
+  background: #020617;
   border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 6px 0;
+  min-width: 150px;
+  z-index: 9999;
+
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
 }
 
 .context-menu div {
-  padding: 8px;
-  cursor: pointer;
-  border-radius: 6px;
+  padding: 8px 12px;
   font-size: 13px;
+  cursor: pointer;
+  color: #cbd5f5;
+  transition: 0.15s;
 }
 
 .context-menu div:hover {
-  background: rgba(59,130,246,0.3);
+  background: #1e293b;
+  color: white;
 }
 
 .context-menu .danger {
   color: #f87171;
 }
 
-/* VIEW (chat/call/video) */
-.view {
-  padding: 20px;
-}
-
-.view h2 {
-  margin-bottom: 10px;
-}
-
-/* CHAT */
-.chat-box {
-  display: flex;
-  flex-direction: column;
-  height: 80%;
-}
-
-.messages {
-  flex: 1;
-  background: rgba(255,255,255,0.03);
-  border-radius: 10px;
-  margin-bottom: 10px;
-}
-
-.chat-box input {
-  padding: 10px;
-  border-radius: 8px;
-  border: none;
-  background: rgba(255,255,255,0.05);
-  color: white;
-}
-
-/* MODAL */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.modal {
-  background: #020617;
-  padding: 20px;
-  border-radius: 12px;
-  width: 300px;
-}
-
-.modal input {
-  width: 100%;
-  margin-top: 10px;
-  padding: 8px;
-  background: rgba(255,255,255,0.05);
-  border: none;
-  color: white;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 10px;
+.context-menu .danger:hover {
+  background: rgba(248,113,113,0.15);
 }

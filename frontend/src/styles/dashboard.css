@@ -1,157 +1,130 @@
-/* Root dashboard */
+/* ROOT */
 .dashboard {
-  min-height: 100vh;
+  position: fixed;
+  inset: 0;
+
   display: flex;
   justify-content: center;
   align-items: center;
 
-  background: radial-gradient(circle at top, #1e3a5f, #0f1c2e);
-  font-family: "Inter", sans-serif;
-  color: #ffffff;
+  background: #0f172a; /* 🔥 match workspace */
 }
 
-/* Card container */
+/* CARD */
 .dashboard-card {
   width: 460px;
-  padding: 32px;
+  padding: 28px;
 
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(18px);
+  border-radius: 16px;
+  background: #020617;
 
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
 }
 
-/* Title */
+/* TITLE */
 .dashboard-title {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+  color: #e2e8f0;
 }
 
-/* Subtitle */
 .dashboard-subtitle {
-  font-size: 14px;
-  color: #9fb3c8;
-  margin-bottom: 25px;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 20px;
 }
 
-/* Buttons container */
+/* ACTIONS */
 .dashboard-actions {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
-/* Buttons */
+/* BUTTONS */
 .btn {
-  padding: 12px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-
-  border: none;
+  padding: 11px;
+  border-radius: 8px;
+  font-size: 13px;
+  border: 1px solid transparent;
   cursor: pointer;
-
-  transition: all 0.2s ease;
+  transition: 0.15s;
 }
 
-/* Primary button */
+/* PRIMARY */
 .btn-primary {
-  background: linear-gradient(135deg, #3a8bfd, #2563eb);
+  background: #3b82f6;
   color: white;
 }
 
 .btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.4);
+  background: #2563eb;
+  box-shadow: 0 6px 16px rgba(37,99,235,0.4);
 }
 
-/* Secondary button */
+/* SECONDARY */
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
+  background: #0f172a;
   color: #cbd5e1;
+  border: 1px solid rgba(255,255,255,0.06);
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: #1e293b;
+  color: white;
 }
 
-/* Workspace list */
+/* WORKSPACE LIST */
 .workspace-list {
-  margin-top: 25px;
+  margin-top: 20px;
   max-height: 240px;
   overflow-y: auto;
-  padding-right: 4px;
 }
 
-/* Empty text */
-.empty-text {
-  text-align: center;
-  color: #7c93a8;
-  font-size: 13px;
-}
-
-/* Workspace item */
+/* ITEM */
 .workspace-item {
-  padding: 14px;
-  margin-top: 10px;
+  padding: 12px;
+  margin-top: 8px;
 
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  background: #0f172a;
 
   display: flex;
   justify-content: space-between;
   align-items: center;
 
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: 0.15s;
   border: 1px solid transparent;
 }
 
 .workspace-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  transform: translateY(-1px);
+  background: #1e293b;
+  border: 1px solid rgba(59,130,246,0.4);
 }
 
-/* Workspace info */
-.workspace-info strong {
-  font-size: 15px;
-  display: block;
+/* TEXT */
+.workspace-item strong {
+  font-size: 13px;
+  color: #e2e8f0;
 }
 
-.workspace-info p {
+.workspace-item span {
   font-size: 12px;
-  color: #94a3b8;
-  margin-top: 4px;
-  word-break: break-all;
+  color: #64748b;
 }
 
-/* Delete button */
-.delete-btn {
+/* DELETE BUTTON */
+.workspace-item button {
   background: transparent;
   border: none;
-  font-size: 16px;
-  color: #f87171;
-  padding: 6px 10px;
-  border-radius: 6px;
-
+  color: #94a3b8;
   cursor: pointer;
-  transition: all 0.2s ease;
+  padding: 4px;
 }
 
-.delete-btn:hover {
-  background: rgba(248, 113, 113, 0.2);
-}
-
-/* Scrollbar */
-.workspace-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.workspace-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
+.workspace-item button:hover {
+  color: #f87171;
 }

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { exec, spawn } = require("child_process");
 
 let mainWindow;
 
@@ -22,7 +23,15 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  console.log("🚀 Electron Ready");
+
+  exec("git --version", (err, stdout) => {
+    console.log("🔍 Git:", stdout || err);
+  });
+
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -36,18 +45,15 @@ ipcMain.handle("select-folder", async () => {
   });
 
   if (result.canceled) return null;
-
   return result.filePaths[0];
 });
 
 
-// 📁 Global workspace storage path
+// 📁 Global workspace storage
 const getStorePath = () => {
   return path.join(app.getPath("userData"), "workspaces.json");
 };
 
-
-// 💾 Save workspace to global list
 const saveWorkspaceToList = (workspace) => {
   const filePath = getStorePath();
 
@@ -69,28 +75,22 @@ const saveWorkspaceToList = (workspace) => {
 // 📥 Get all workspaces
 ipcMain.handle("get-workspaces", async () => {
   const filePath = getStorePath();
-
-  if (!fs.existsSync(filePath)) {
-    return [];
-  }
-
+  if (!fs.existsSync(filePath)) return [];
   return JSON.parse(fs.readFileSync(filePath));
 });
 
 
-// 🏗️ Create Workspace
+// 🏗️ CREATE WORKSPACE (🔥 WITH CLONE)
 ipcMain.handle("create-workspace", async (event, data) => {
   const { name, location, github } = data;
 
   const workspacePath = path.join(location, name);
 
   try {
-    // Create folder
     if (!fs.existsSync(workspacePath)) {
       fs.mkdirSync(workspacePath);
     }
 
-    // Create config file
     const config = {
       name,
       github: github || null,
@@ -102,12 +102,56 @@ ipcMain.handle("create-workspace", async (event, data) => {
       JSON.stringify(config, null, 2)
     );
 
+    // 🔥 Normalize repo URL
+    const normalizeRepoUrl = (url) => {
+      if (!url) return null;
+      if (url.startsWith("git@github.com:")) {
+        return url.replace("git@github.com:", "https://github.com/");
+      }
+      return url;
+    };
+
+    let repoPath = workspacePath;
+    const repoUrl = normalizeRepoUrl(github);
+
+    // 🚀 CLONE DURING CREATION
+    if (repoUrl) {
+      const repoName = repoUrl.split("/").pop().replace(".git", "");
+      repoPath = path.join(workspacePath, repoName);
+
+      if (!fs.existsSync(repoPath)) {
+        console.log("⬇️ Cloning repo during creation...");
+
+        await new Promise((resolve, reject) => {
+          const git = spawn("git", ["clone", repoUrl], {
+            cwd: workspacePath,
+          });
+
+          git.stdout.on("data", (d) => console.log("📤", d.toString()));
+          git.stderr.on("data", (d) => console.log("⚠️", d.toString()));
+
+          git.on("error", (err) => {
+            console.log("❌ Spawn error:", err);
+            reject(err.message);
+          });
+
+          git.on("close", (code) => {
+            console.log("🔚 Git exited:", code);
+            if (code === 0) resolve();
+            else reject("Clone failed");
+          });
+        });
+
+        console.log("✅ Clone complete");
+      }
+    }
+
     const newWorkspace = {
       name,
       path: workspacePath,
+      repoPath, // 🔥 IMPORTANT
     };
 
-    // 🔥 Save globally
     saveWorkspaceToList(newWorkspace);
 
     return {
@@ -116,8 +160,7 @@ ipcMain.handle("create-workspace", async (event, data) => {
     };
 
   } catch (err) {
-    console.error(err);
-
+    console.error("❌ Create workspace failed:", err);
     return {
       success: false,
       error: err.message,
@@ -126,7 +169,7 @@ ipcMain.handle("create-workspace", async (event, data) => {
 });
 
 
-// 📂 Open Existing Workspace
+// 📂 OPEN WORKSPACE (NO CLONE)
 ipcMain.handle("open-workspace-folder", async () => {
   const result = await dialog.showOpenDialog({
     properties: ["openDirectory"],
@@ -137,23 +180,28 @@ ipcMain.handle("open-workspace-folder", async () => {
   const folderPath = result.filePaths[0];
   const configPath = path.join(folderPath, "workspace.json");
 
-  // ❌ Not a valid workspace
   if (!fs.existsSync(configPath)) {
     return {
       success: false,
-      error: "No workspace.json found in this folder",
+      error: "No workspace.json found",
     };
   }
 
-  // ✅ Read config
   const config = JSON.parse(fs.readFileSync(configPath));
+
+  let repoPath = folderPath;
+
+  if (config.github) {
+    const repoName = config.github.split("/").pop().replace(".git", "");
+    repoPath = path.join(folderPath, repoName);
+  }
 
   const workspace = {
     name: config.name || path.basename(folderPath),
     path: folderPath,
+    repoPath,
   };
 
-  // Save if not already present
   saveWorkspaceToList(workspace);
 
   return {
@@ -162,15 +210,14 @@ ipcMain.handle("open-workspace-folder", async () => {
   };
 });
 
-// ❌ Remove workspace from list
+
+// ❌ Remove workspace
 ipcMain.handle("remove-workspace", async (event, workspacePath) => {
   const filePath = getStorePath();
 
   if (!fs.existsSync(filePath)) return { success: true };
 
   let workspaces = JSON.parse(fs.readFileSync(filePath));
-
-  // Filter out the workspace
   workspaces = workspaces.filter((w) => w.path !== workspacePath);
 
   fs.writeFileSync(filePath, JSON.stringify(workspaces, null, 2));
@@ -179,7 +226,7 @@ ipcMain.handle("remove-workspace", async (event, workspacePath) => {
 });
 
 
-// 📂 Read directory
+// 📂 File system ops
 ipcMain.handle("read-dir", async (event, dirPath) => {
   const items = fs.readdirSync(dirPath, { withFileTypes: true });
 
@@ -190,58 +237,31 @@ ipcMain.handle("read-dir", async (event, dirPath) => {
   }));
 });
 
-// 📄 Read file
 ipcMain.handle("read-file", async (event, filePath) => {
   return fs.readFileSync(filePath, "utf-8");
 });
 
-// 💾 Write file
 ipcMain.handle("write-file", async (event, filePath, content) => {
   fs.writeFileSync(filePath, content);
   return true;
 });
 
 ipcMain.handle("create-file", async (event, filePath) => {
-  try {
-    if (fs.existsSync(filePath)) {
-      return {
-        success: false,
-        error: "File or folder already exists",
-      };
-    }
-
-    fs.writeFileSync(filePath, "");
-
-    return { success: true };
-  } catch (err) {
-    return {
-      success: false,
-      error: err.message,
-    };
+  if (fs.existsSync(filePath)) {
+    return { success: false, error: "Already exists" };
   }
+  fs.writeFileSync(filePath, "");
+  return { success: true };
 });
 
 ipcMain.handle("create-folder", async (event, dirPath) => {
-  try {
-    if (fs.existsSync(dirPath)) {
-      return {
-        success: false,
-        error: "File or folder already exists",
-      };
-    }
-
-    fs.mkdirSync(dirPath);
-
-    return { success: true };
-  } catch (err) {
-    return {
-      success: false,
-      error: err.message,
-    };
+  if (fs.existsSync(dirPath)) {
+    return { success: false, error: "Already exists" };
   }
+  fs.mkdirSync(dirPath);
+  return { success: true };
 });
 
-// ❌ Delete
 ipcMain.handle("delete-path", async (event, targetPath) => {
   if (fs.lstatSync(targetPath).isDirectory()) {
     fs.rmSync(targetPath, { recursive: true, force: true });
@@ -252,21 +272,18 @@ ipcMain.handle("delete-path", async (event, targetPath) => {
 });
 
 ipcMain.handle("rename-path", async (event, oldPath, newPath) => {
-  try {
-    if (fs.existsSync(newPath)) {
-      return {
-        success: false,
-        error: "File or folder with this name already exists",
-      };
-    }
-
-    fs.renameSync(oldPath, newPath);
-
-    return { success: true };
-  } catch (err) {
-    return {
-      success: false,
-      error: err.message,
-    };
+  if (fs.existsSync(newPath)) {
+    return { success: false, error: "Already exists" };
   }
+  fs.renameSync(oldPath, newPath);
+  return { success: true };
+});
+
+ipcMain.handle("run-command", async (event, command, cwd) => {
+  return new Promise((resolve) => {
+    exec(command, { cwd }, (error, stdout, stderr) => {
+      if (error) return resolve(stderr || error.message);
+      resolve(stdout || "Done");
+    });
+  });
 });
