@@ -21,15 +21,49 @@ function CreateWorkspace() {
       return;
     }
 
-    const workspace = await window.api.createWorkspace({
-      name,
-      location,
-      github,
-    });
+    try {
+      // 🌐 1. Create ONLINE workspace
+      const res = await fetch("http://localhost:5000/api/workspace/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          repoUrl: github,
+          username: "User_" + Date.now(),
+        }),
+      });
 
-    localStorage.setItem("lastWorkspace", JSON.stringify(workspace));
+      const onlineWorkspace = await res.json();
 
-    navigate("/workspace", { state: workspace });
+      // 💻 2. Create LOCAL workspace (Electron)
+      const workspace = await window.api.createWorkspace({
+        name,
+        location,
+        github,
+      });
+
+      if (!workspace.success) {
+        alert(workspace.error);
+        return;
+      }
+
+      // 🔗 Merge both
+      const finalWorkspace = {
+        ...workspace,
+        workspaceId: onlineWorkspace._id,
+        joinCode: onlineWorkspace.joinCode,
+      };
+
+      localStorage.setItem("lastWorkspace", JSON.stringify(finalWorkspace));
+
+      navigate("/workspace", { state: finalWorkspace });
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create workspace");
+    }
   };
 
   return (
@@ -40,7 +74,6 @@ function CreateWorkspace() {
           Set up a new development workspace
         </p>
 
-        {/* Name */}
         <div className="input-group">
           <label>Workspace Name</label>
           <input
@@ -51,7 +84,6 @@ function CreateWorkspace() {
           />
         </div>
 
-        {/* Location */}
         <div className="input-group">
           <label>Location</label>
           <div className="folder-select">
@@ -64,7 +96,6 @@ function CreateWorkspace() {
           </div>
         </div>
 
-        {/* GitHub */}
         <div className="input-group">
           <label>GitHub Repo (optional)</label>
           <input
@@ -75,7 +106,6 @@ function CreateWorkspace() {
           />
         </div>
 
-        {/* Actions */}
         <div className="create-actions">
           <Button onClick={createWorkspace}>
             Create Workspace

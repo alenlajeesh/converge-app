@@ -1,12 +1,38 @@
+// src/server.js
 const express = require("express");
+const cors = require("cors");
+const http = require("http");
+const { Server } = require("socket.io");
+require("dotenv").config();
+
+const connectDB = require("./config/db");
+
+const workspaceRoutes = require("./routes/workspace.routes");
+const chatRoutes = require("./routes/chat.routes");
+const workspaceSocket = require("./sockets/workspace.socket");
 
 const app = express();
-const PORT = 5000;
+connectDB();
 
-app.get("/", (req, res) => {
-  res.send("Backend is running 🚀");
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use("/api/workspace", workspaceRoutes);
+app.use("/api/chat", chatRoutes);
+
+// Create HTTP server
+const server = http.createServer(app);
+
+// Socket setup
+const io = new Server(server, {
+  cors: {
+    origin: "*"
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+workspaceSocket(io);
+
+server.listen(process.env.PORT, () => {
+  console.log("🚀 Server running on http://localhost:"+process.env.PORT);
 });
