@@ -250,8 +250,12 @@ function WorkspaceHome() {
             closeFile={closeFile}
           />
         )}
-
-        {activeView === "chat" && <ChatView />}
+		{activeView === "chat" && (
+			<ChatView
+				workspaceId={state?.workspaceId}
+				username={"User_" + Date.now()}
+			/>
+		)}
         {activeView === "call" && <CallView />}
         {activeView === "video" && <VideoView />}
       </div>
