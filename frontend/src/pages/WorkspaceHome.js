@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import ActivityBar from "../components/ActivityBar";
 import Sidebar from "../components/Sidebar";
@@ -15,9 +15,17 @@ import "../styles/workspace.css";
 
 function WorkspaceHome() {
   const { state } = useLocation();
+  const joinCode = state?.joinCode;
   const navigate = useNavigate();
+  const { id } = useParams();
 
+	const workspaceId = id;
+
+	if (!workspaceId) {
+		console.error("❌ workspaceId missing from URL");
+	}
   const rootPath = state?.repoPath || state?.path;
+  
 
   const [tree, setTree] = useState([]);
   const [showTerminal, setShowTerminal] = useState(true);
@@ -36,12 +44,20 @@ function WorkspaceHome() {
     node: null,
   });
 
-  // 🔐 Redirect if no workspace
+  // 🚨 Redirect safety
   useEffect(() => {
     if (!rootPath) {
+      console.error("❌ No rootPath");
       navigate("/");
     }
   }, [rootPath, navigate]);
+
+  // 🚨 Debug
+  useEffect(() => {
+    if (!workspaceId) {
+      console.error("❌ Missing workspaceId");
+    }
+  }, [workspaceId]);
 
   // 🌲 Build directory tree
   const buildTree = async (dirPath) => {
@@ -198,90 +214,90 @@ function WorkspaceHome() {
 
     setContextMenu((prev) => ({ ...prev, visible: false }));
   };
-	return (
-  <div className="workspace">
-    {/* LEFT ICON BAR */}
-    <ActivityBar active={activeView} setActive={setActiveView} />
 
-    {/* SIDEBAR */}
-    <Sidebar
-      tree={tree}
-      expanded={expanded}
-      toggleFolder={toggleFolder}
-      openFile={openFile}
-      setSelectedDir={setSelectedDir}
-      setContextMenu={setContextMenu}
-    />
+  return (
+    <div className="workspace">
+      {/* LEFT ICON BAR */}
+      <ActivityBar active={activeView} setActive={setActiveView} />
 
-    {/* MAIN AREA */}
-    <div className="main-area">
-      {/* TOP BAR */}
-      <div className="topbar">
-        <span className="workspace-name">
-          {rootPath?.split("/").pop()}
-        </span>
+      {/* SIDEBAR */}
+      <Sidebar
+        tree={tree}
+        expanded={expanded}
+        toggleFolder={toggleFolder}
+        openFile={openFile}
+        setSelectedDir={setSelectedDir}
+        setContextMenu={setContextMenu}
+      />
 
-        <div className="topbar-actions">
-          <button
-            className="terminal-toggle"
-            onClick={() => setShowTerminal(!showTerminal)}
-          >
-            Terminal
-          </button>
+      {/* MAIN AREA */}
+      <div className="main-area">
+        {/* TOP BAR */}
+        <div className="topbar">
+		<div style={{ marginLeft: "20px" }}>
+  {joinCode && (
+    <span style={{ fontSize: "12px", opacity: 0.7 }}>
+      Join Code: <strong>{joinCode}</strong>
+    </span>
+  )}
+</div>
+          <span className="workspace-name">
+            {rootPath?.split("/").pop()}
+          </span>
 
-          <button
-            className="back-btn"
-            onClick={() => navigate("/")}
-          >
-            ← Back
-          </button>
+          <div className="topbar-actions">
+            <button onClick={() => setShowTerminal(!showTerminal)}>
+              Terminal
+            </button>
+
+            <button onClick={() => navigate("/")}>
+              ← Back
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* CONTENT */}
-      <div className="editor-area">
-        {activeView === "explorer" && (
-          <Editor
-            selectedFile={selectedFile}
-            content={content}
-            setContent={setContent}
-            openFiles={openFiles}
-            setActiveFile={setActiveFile}
-            closeFile={closeFile}
+        {/* CONTENT */}
+        <div className="editor-area">
+          {activeView === "explorer" && (
+            <Editor
+              selectedFile={selectedFile}
+              content={content}
+              setContent={setContent}
+              openFiles={openFiles}
+              setActiveFile={setActiveFile}
+              closeFile={closeFile}
+            />
+          )}
+
+          {activeView === "chat" && workspaceId && (
+            <ChatView workspaceId={workspaceId} />
+          )}
+
+          {activeView === "call" && <CallView />}
+          {activeView === "video" && <VideoView />}
+        </div>
+
+        {/* TERMINAL */}
+        {showTerminal && (
+          <Terminal
+            rootPath={rootPath}
+            onClose={() => setShowTerminal(false)}
           />
         )}
-		{activeView === "chat" && (
-			<ChatView
-				workspaceId={state?.workspaceId}
-				username={"User_" + Date.now()}
-			/>
-		)}
-        {activeView === "call" && <CallView />}
-        {activeView === "video" && <VideoView />}
       </div>
 
-      {/* TERMINAL */}
-      {showTerminal && (
-		<Terminal
-			rootPath={rootPath}
-			onClose={() => setShowTerminal(false)}
-		/>
-)}
+      {/* CONTEXT MENU */}
+      <ContextMenu
+        x={contextMenu.x}
+        y={contextMenu.y}
+        visible={contextMenu.visible}
+        onClose={() =>
+          setContextMenu((prev) => ({ ...prev, visible: false }))
+        }
+        onAction={handleContextAction}
+      />
     </div>
-
-    {/* CONTEXT MENU */}
-    <ContextMenu
-      x={contextMenu.x}
-      y={contextMenu.y}
-      visible={contextMenu.visible}
-      onClose={() =>
-        setContextMenu((prev) => ({ ...prev, visible: false }))
-      }
-      onAction={handleContextAction}
-    />
-  </div>
-);
-
+  );
 }
 
 export default WorkspaceHome;

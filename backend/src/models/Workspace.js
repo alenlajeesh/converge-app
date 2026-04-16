@@ -1,22 +1,45 @@
-// src/models/Workspace.js
 const mongoose = require("mongoose");
 
 const workspaceSchema = new mongoose.Schema({
-  name: String,
-  repoUrl: String,
-  joinCode: String,
+  name: {
+    type: String,
+    required: true,
+  },
 
+  repoUrl: {
+    type: String,
+  },
+
+  // 🔥 CRITICAL (used for linking local folders)
+  localPath: {
+    type: String,
+  },
+
+  // 🔑 Invite code
+  joinCode: {
+    type: String,
+    unique: true,
+  },
+
+  // 👤 Owner
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+
+  // 👥 Members (REAL SYSTEM)
   members: [
     {
-      userId: String,
-      username: String
-    }
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
   ],
 
   createdAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
 });
 
 module.exports = mongoose.model("Workspace", workspaceSchema);

@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Button from "../components/Button";
+import { useAuth } from "../context/AuthContext";
 import "../styles/createWorkspace.css";
 
-function CreateWorkspace() {
+function CreateWorkspace({ mode = "create" }) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [github, setGithub] = useState("");
+  const [joinCode, setJoinCode] = useState("");
 
+  const { user, token } = useAuth();
   const navigate = useNavigate();
 
   const selectFolder = async () => {
@@ -16,32 +19,69 @@ function CreateWorkspace() {
   };
 
   const createWorkspace = async () => {
-    if (!name || !location) {
-      alert("Name and location required");
+    if (!user) {
+      alert("Login required");
+      return;
+    }
+
+    if (!location) {
+      alert("Select folder");
       return;
     }
 
     try {
-      // 🌐 1. Create ONLINE workspace
-      const res = await fetch("http://localhost:5000/api/workspace/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          repoUrl: github,
-          username: "User_" + Date.now(),
-        }),
-      });
+      let onlineWorkspace;
 
-      const onlineWorkspace = await res.json();
+      if (mode === "join") {
+        // 🔥 JOIN EXISTING
+        const res = await fetch("http://localhost:5000/api/workspace/join", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ joinCode }),
+        });
 
-      // 💻 2. Create LOCAL workspace (Electron)
+        onlineWorkspace = await res.json();
+
+        if (!onlineWorkspace._id) {
+          alert("Invalid join code");
+          return;
+        }
+      } else {
+        // 🆕 CREATE NEW
+        if (!name) {
+          alert("Name required");
+          return;
+        }
+
+        const res = await fetch("http://localhost:5000/api/workspace/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({
+            name,
+            repoUrl: github,
+            localPath: location,
+          }),
+        });
+
+        onlineWorkspace = await res.json();
+
+        if (!onlineWorkspace._id) {
+          alert("Failed to create workspace");
+          return;
+        }
+      }
+
+      // 💻 LOCAL SETUP
       const workspace = await window.api.createWorkspace({
-        name,
+        name: onlineWorkspace.name,
         location,
-        github,
+        github: onlineWorkspace.repoUrl,
       });
 
       if (!workspace.success) {
@@ -49,73 +89,80 @@ function CreateWorkspace() {
         return;
       }
 
-      // 🔗 Merge both
       const finalWorkspace = {
         ...workspace,
         workspaceId: onlineWorkspace._id,
         joinCode: onlineWorkspace.joinCode,
       };
 
-      localStorage.setItem("lastWorkspace", JSON.stringify(finalWorkspace));
-
-      navigate("/workspace", { state: finalWorkspace });
+      navigate(`/workspace/${onlineWorkspace._id}`, {
+        state: finalWorkspace,
+      });
 
     } catch (err) {
       console.error(err);
-      alert("Failed to create workspace");
+      alert("Failed");
     }
   };
 
   return (
     <div className="create-container">
       <div className="create-card">
-        <h2 className="create-title">Create Workspace</h2>
-        <p className="create-subtitle">
-          Set up a new development workspace
-        </p>
+        <h2 className="create-title">
+          {mode === "join" ? "Join Workspace" : "Create Workspace"}
+        </h2>
 
-        <div className="input-group">
-          <label>Workspace Name</label>
-          <input
-            type="text"
-            placeholder="My Project"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
+        {mode === "create" && (
+          <div className="input-group">
+            <label>Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My Project"
+            />
+          </div>
+        )}
+
+        {mode === "join" && (
+          <div className="input-group">
+            <label>Join Code</label>
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              placeholder="Enter join code"
+            />
+          </div>
+        )}
 
         <div className="input-group">
           <label>Location</label>
-          <div className="folder-select">
-            <Button onClick={selectFolder}>
-              Select Folder
-            </Button>
-            <span className="folder-path">
-              {location || "No folder selected"}
-            </span>
-          </div>
+          <Button onClick={selectFolder}>
+            Select Folder
+          </Button>
+          <p>{location || "No folder selected"}</p>
         </div>
 
-        <div className="input-group">
-          <label>GitHub Repo (optional)</label>
-          <input
-            type="text"
-            placeholder="https://github.com/user/repo"
-            value={github}
-            onChange={(e) => setGithub(e.target.value)}
-          />
-        </div>
+        {mode === "create" && (
+          <div className="input-group">
+            <label>GitHub URL</label>
+            <input
+              value={github}
+              onChange={(e) => setGithub(e.target.value)}
+              placeholder="https://github.com/user/repo"
+            />
+          </div>
+        )}
 
         <div className="create-actions">
           <Button onClick={createWorkspace}>
-            Create Workspace
+            {mode === "join" ? "Join" : "Create"}
           </Button>
 
           <Button
             variant="secondary"
             onClick={() => navigate("/")}
           >
-            ← Back
+            Back
           </Button>
         </div>
       </div>

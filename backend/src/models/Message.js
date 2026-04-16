@@ -1,11 +1,25 @@
-// src/models/Message.js
 const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema({
-  workspaceId: String,
-  username: String,
-  message: String,
-  time: {
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Workspace",
+    required: true
+  },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true
+  },
+  username: {   // ✅ IMPORTANT
+    type: String,
+    required: true
+  },
+  message: {
+    type: String,
+    required: true
+  },
+  createdAt: {
     type: Date,
     default: Date.now
   }
