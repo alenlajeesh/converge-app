@@ -5,96 +5,120 @@ import "../styles/auth.css";
 
 function AuthPage() {
   const { login } = useAuth();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
 
   const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
   const [form, setForm] = useState({
     username: "",
-    email: "",
+    email:    "",
     password: ""
   });
 
+  const handleChange = (e) =>
+    setForm({ ...form, [e.target.name]: e.target.value });
+
   const handleSubmit = async () => {
-    const url = isLogin
-      ? "http://localhost:5000/api/auth/login"
-      : "http://localhost:5000/api/auth/register";
+    setError("");
 
-    const body = isLogin
-      ? { email: form.email, password: form.password }
-      : form;
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-
-    const data = await res.json();
-
-    if (!data.token) {
-      alert(data.message || "Error");
+    if (!form.email || !form.password) {
+      setError("Email and password are required");
+      return;
+    }
+    if (!isLogin && !form.username) {
+      setError("Username is required");
       return;
     }
 
-    login(data.token, data.user);
-    navigate("/");
+    setLoading(true);
+    try {
+      const url  = isLogin
+        ? "http://localhost:5000/api/auth/login"
+        : "http://localhost:5000/api/auth/register";
+
+      const body = isLogin
+        ? { email: form.email, password: form.password }
+        : { username: form.username, email: form.email, password: form.password };
+
+      const res  = await fetch(url, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.token) {
+        setError(data.message || "Something went wrong");
+        return;
+      }
+
+      login(data.token, data.user);
+      navigate("/");
+    } catch (err) {
+      setError("Server error. Is the backend running?");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="auth-container">
       <div className="auth-card">
-
         <div className="auth-header">
-          <h2 className="auth-title">
-            {isLogin ? "Login" : "Register"}
-          </h2>
-
-          <button className="auth-back" onClick={() => navigate("/")}>
-            ← Back
-          </button>
+          <h2 className="auth-title">{isLogin ? "Welcome back" : "Create account"}</h2>
+          <button className="auth-back" onClick={() => navigate("/")}>← Back</button>
         </div>
+
+        {error && <div className="auth-error">{error}</div>}
 
         {!isLogin && (
           <div className="auth-group">
+            <label>Username</label>
             <input
-              placeholder="Username"
-              onChange={(e) =>
-                setForm({ ...form, username: e.target.value })
-              }
+              name="username"
+              placeholder="Your username"
+              value={form.username}
+              onChange={handleChange}
             />
           </div>
         )}
 
         <div className="auth-group">
+          <label>Email</label>
           <input
-            placeholder="Email"
-            onChange={(e) =>
-              setForm({ ...form, email: e.target.value })
-            }
+            name="email"
+            type="email"
+            placeholder="you@email.com"
+            value={form.email}
+            onChange={handleChange}
           />
         </div>
 
         <div className="auth-group">
+          <label>Password</label>
           <input
+            name="password"
             type="password"
-            placeholder="Password"
-            onChange={(e) =>
-              setForm({ ...form, password: e.target.value })
-            }
+            placeholder="••••••••"
+            value={form.password}
+            onChange={handleChange}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           />
         </div>
 
-        <button className="auth-btn" onClick={handleSubmit}>
-          {isLogin ? "Login" : "Register"}
+        <button
+          className="auth-btn"
+          onClick={handleSubmit}
+          disabled={loading}
+        >
+          {loading ? "Please wait..." : isLogin ? "Login" : "Register"}
         </button>
 
-        <p
-          className="auth-switch"
-          onClick={() => setIsLogin(!isLogin)}
-        >
-          {isLogin ? "Create account" : "Already have an account?"}
+        <p className="auth-switch" onClick={() => { setIsLogin(!isLogin); setError(""); }}>
+          {isLogin ? "Don't have an account? Register" : "Already have an account? Login"}
         </p>
-
       </div>
     </div>
   );

@@ -1,168 +1,139 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import ActivityBar from "../components/ActivityBar";
-import Sidebar from "../components/Sidebar";
-import Editor from "../components/Editor";
-import ContextMenu from "../components/ContextMenu";
-import Terminal from "../components/Terminal";
-
-import ChatView from "../components/ChatView";
-import CallView from "../components/CallView";
-import VideoView from "../components/VideoView";
+import ActivityBar  from "../components/ActivityBar";
+import Sidebar      from "../components/Sidebar";
+import Editor       from "../components/Editor";
+import ContextMenu  from "../components/ContextMenu";
+import Terminal     from "../components/Terminal";
+import ChatView     from "../components/ChatView";
+import CallView     from "../components/CallView";
+import VideoView    from "../components/VideoView";
 
 import "../styles/workspace.css";
 
 function WorkspaceHome() {
-  const { state } = useLocation();
-  const joinCode = state?.joinCode;
-  const navigate = useNavigate();
-  const { id } = useParams();
+  const { state }    = useLocation();
+  const { id }       = useParams();
+  const navigate     = useNavigate();
 
-	const workspaceId = id;
+  const workspaceId  = id;
+  const joinCode     = state?.joinCode;
+  const rootPath     = state?.repoPath || state?.path;
 
-	if (!workspaceId) {
-		console.error("❌ workspaceId missing from URL");
-	}
-  const rootPath = state?.repoPath || state?.path;
-  
-
-  const [tree, setTree] = useState([]);
-  const [showTerminal, setShowTerminal] = useState(true);
-  const [expanded, setExpanded] = useState({});
+  const [tree,         setTree]         = useState([]);
+  const [expanded,     setExpanded]     = useState({});
   const [selectedFile, setSelectedFile] = useState(null);
-  const [content, setContent] = useState("");
-  const [selectedDir, setSelectedDir] = useState(rootPath);
-
-  const [openFiles, setOpenFiles] = useState([]);
-  const [activeView, setActiveView] = useState("explorer");
-
-  const [contextMenu, setContextMenu] = useState({
-    visible: false,
-    x: 0,
-    y: 0,
-    node: null,
+  const [content,      setContent]      = useState("");
+  const [openFiles,    setOpenFiles]    = useState([]);
+  const [activeView,   setActiveView]   = useState("explorer");
+  const [showTerminal, setShowTerminal] = useState(true);
+  const [treeLoading,  setTreeLoading]  = useState(false);
+  const [contextMenu,  setContextMenu]  = useState({
+    visible: false, x: 0, y: 0, node: null
   });
 
-  // 🚨 Redirect safety
+  // Redirect if no path
   useEffect(() => {
     if (!rootPath) {
-      console.error("❌ No rootPath");
+      console.error("❌ No rootPath — redirecting");
       navigate("/");
     }
   }, [rootPath, navigate]);
 
-  // 🚨 Debug
-  useEffect(() => {
-    if (!workspaceId) {
-      console.error("❌ Missing workspaceId");
-    }
-  }, [workspaceId]);
-
-  // 🌲 Build directory tree
+  // Build tree nodes
   const buildTree = async (dirPath) => {
     try {
       const items = await window.api.readDir(dirPath);
-
-      return items.map((item) => ({
-        ...item,
-        children: item.isDir ? [] : undefined,
-      }));
+      return items
+        .sort((a, b) => {
+          if (a.isDir && !b.isDir) return -1;
+          if (!a.isDir && b.isDir) return 1;
+          return a.name.localeCompare(b.name);
+        })
+        .map((item) => ({
+          ...item,
+          children: item.isDir ? [] : undefined
+        }));
     } catch (err) {
-      console.error("Error reading directory:", err);
+      console.error("readDir error:", err);
       return [];
     }
   };
 
-  // 📂 Load root directory
+  // Load root
   const loadRoot = async () => {
     if (!rootPath) return;
-
-    const children = await buildTree(rootPath);
-
-    setTree([
-      {
-        name: rootPath.split("/").pop(),
-        path: rootPath,
-        isDir: true,
-        children,
-      },
-    ]);
+    setTreeLoading(true);
+    try {
+      const children = await buildTree(rootPath);
+      setTree([{
+        name:     rootPath.split(/[\\/]/).pop(),
+        path:     rootPath,
+        isDir:    true,
+        children
+      }]);
+      setExpanded({ [rootPath]: true });
+    } finally {
+      setTreeLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (rootPath) {
-      setSelectedDir(rootPath);
-      setExpanded({ [rootPath]: true });
-      loadRoot();
-    }
+    if (rootPath) loadRoot();
   }, [rootPath]);
 
-  // 📂 Toggle folder
+  // Toggle folder
   const toggleFolder = async (item) => {
     if (!item.isDir) return;
 
-    const isOpen = expanded[item.path];
-
-    if (isOpen) {
-      setExpanded((prev) => ({
-        ...prev,
-        [item.path]: false,
-      }));
-    } else {
-      const children = await buildTree(item.path);
-
-      const updateTree = (nodes) =>
-        nodes.map((n) => {
-          if (n.path === item.path) {
-            return { ...n, children };
-          }
-          if (n.children) {
-            return { ...n, children: updateTree(n.children) };
-          }
-          return n;
-        });
-
-      setTree((prev) => updateTree(prev));
-
-      setExpanded((prev) => ({
-        ...prev,
-        [item.path]: true,
-      }));
+    if (expanded[item.path]) {
+      setExpanded((prev) => ({ ...prev, [item.path]: false }));
+      return;
     }
+
+    const children = await buildTree(item.path);
+
+    const updateTree = (nodes) =>
+      nodes.map((n) => {
+        if (n.path === item.path) return { ...n, children };
+        if (n.children)           return { ...n, children: updateTree(n.children) };
+        return n;
+      });
+
+    setTree((prev) => updateTree(prev));
+    setExpanded((prev) => ({ ...prev, [item.path]: true }));
   };
 
-  // 📄 Open file
+  // Open file
   const openFile = async (file) => {
-    if (file.isDir) return;
+    if (file.isDir) { toggleFolder(file); return; }
 
     try {
       const data = await window.api.readFile(file.path);
-
       setSelectedFile(file.path);
       setContent(data);
-
-      setOpenFiles((prev) => {
-        if (prev.includes(file.path)) return prev;
-        return [...prev, file.path];
-      });
+      setOpenFiles((prev) =>
+        prev.includes(file.path) ? prev : [...prev, file.path]
+      );
+      setActiveView("explorer");
     } catch (err) {
-      console.error("Error opening file:", err);
+      console.error("openFile error:", err);
     }
   };
 
-  // 🔄 Switch tab
+  // Switch tab
   const setActiveFile = async (filePath) => {
     try {
       const data = await window.api.readFile(filePath);
       setSelectedFile(filePath);
       setContent(data);
     } catch (err) {
-      console.error("Error switching file:", err);
+      console.error("setActiveFile error:", err);
     }
   };
 
-  // ❌ Close tab
+  // Close tab
   const closeFile = (filePath) => {
     const updated = openFiles.filter((f) => f !== filePath);
     setOpenFiles(updated);
@@ -177,34 +148,51 @@ function WorkspaceHome() {
     }
   };
 
-  // 🖱 Context menu actions
+  // Context menu action
   const handleContextAction = async (action) => {
     const node = contextMenu.node;
     if (!node) return;
 
+    const sep        = node.path.includes("/") ? "/" : "\\";
     const parentPath = node.isDir
       ? node.path
-      : node.path.substring(0, node.path.lastIndexOf("/"));
+      : node.path.substring(0, node.path.lastIndexOf(sep));
 
     try {
       if (action === "newFile") {
-        await window.api.createFile(parentPath + "/newFile");
+        let fileName = "newFile";
+        let counter  = 1;
+        while (true) {
+          const candidate = parentPath + sep + fileName;
+          const result    = await window.api.createFile(candidate);
+          if (result.success) break;
+          fileName = `newFile${counter++}`;
+        }
       }
 
       if (action === "newFolder") {
-        await window.api.createFolder(parentPath + "/newFolder");
+        let folderName = "newFolder";
+        let counter    = 1;
+        while (true) {
+          const candidate = parentPath + sep + folderName;
+          const result    = await window.api.createFolder(candidate);
+          if (result.success) break;
+          folderName = `newFolder${counter++}`;
+        }
       }
 
       if (action === "rename") {
-        const newName = prompt("Enter new name");
-        if (!newName) return;
-
-        const newPath = parentPath + "/" + newName;
-        await window.api.renamePath(node.path, newPath);
+        const newName = prompt("Rename to:");
+        if (!newName?.trim()) return;
+        const newPath = parentPath + sep + newName.trim();
+        const result  = await window.api.renamePath(node.path, newPath);
+        if (!result.success) { alert(result.error); return; }
       }
 
       if (action === "delete") {
+        if (!confirm(`Delete "${node.name}"?`)) return;
         await window.api.deletePath(node.path);
+        if (openFiles.includes(node.path)) closeFile(node.path);
       }
 
       await loadRoot();
@@ -215,43 +203,49 @@ function WorkspaceHome() {
     setContextMenu((prev) => ({ ...prev, visible: false }));
   };
 
+  const workspaceName = rootPath?.split(/[\\/]/).pop() || "Workspace";
+
   return (
-    <div className="workspace">
-      {/* LEFT ICON BAR */}
+    <div className="workspace" onClick={() =>
+      contextMenu.visible &&
+      setContextMenu((p) => ({ ...p, visible: false }))
+    }>
+      {/* ACTIVITY BAR */}
       <ActivityBar active={activeView} setActive={setActiveView} />
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR — always visible */}
       <Sidebar
         tree={tree}
         expanded={expanded}
+        loading={treeLoading}
         toggleFolder={toggleFolder}
         openFile={openFile}
-        setSelectedDir={setSelectedDir}
         setContextMenu={setContextMenu}
       />
 
-      {/* MAIN AREA */}
+      {/* MAIN */}
       <div className="main-area">
-        {/* TOP BAR */}
+        {/* TOPBAR */}
         <div className="topbar">
-		<div style={{ marginLeft: "20px" }}>
-  {joinCode && (
-    <span style={{ fontSize: "12px", opacity: 0.7 }}>
-      Join Code: <strong>{joinCode}</strong>
-    </span>
-  )}
-</div>
-          <span className="workspace-name">
-            {rootPath?.split("/").pop()}
-          </span>
+          <div className="topbar-left">
+            <span className="workspace-name">{workspaceName}</span>
+            {joinCode && (
+              <div className="topbar-joincode">
+                <span>Invite:</span>
+                <strong>{joinCode}</strong>
+              </div>
+            )}
+          </div>
 
           <div className="topbar-actions">
-            <button onClick={() => setShowTerminal(!showTerminal)}>
-              Terminal
+            <button
+              className={`topbar-btn ${showTerminal ? "active" : ""}`}
+              onClick={() => setShowTerminal(!showTerminal)}
+            >
+              ⌨ Terminal
             </button>
-
-            <button onClick={() => navigate("/")}>
-              ← Back
+            <button className="topbar-btn" onClick={() => navigate("/")}>
+              ← Home
             </button>
           </div>
         </div>
@@ -268,12 +262,8 @@ function WorkspaceHome() {
               closeFile={closeFile}
             />
           )}
-
-          {activeView === "chat" && workspaceId && (
-            <ChatView workspaceId={workspaceId} />
-          )}
-
-          {activeView === "call" && <CallView />}
+          {activeView === "chat"  && <ChatView workspaceId={workspaceId} />}
+          {activeView === "call"  && <CallView />}
           {activeView === "video" && <VideoView />}
         </div>
 
@@ -291,9 +281,7 @@ function WorkspaceHome() {
         x={contextMenu.x}
         y={contextMenu.y}
         visible={contextMenu.visible}
-        onClose={() =>
-          setContextMenu((prev) => ({ ...prev, visible: false }))
-        }
+        onClose={() => setContextMenu((p) => ({ ...p, visible: false }))}
         onAction={handleContextAction}
       />
     </div>
