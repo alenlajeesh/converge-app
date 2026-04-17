@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Button from "../components/Button";
+import { useAuth } from "../context/AuthContext";
 import "../styles/dashboard.css";
 
 function Dashboard() {
   const navigate = useNavigate();
+  const { user, token, logout } = useAuth();
+
   const [workspaces, setWorkspaces] = useState([]);
 
   useEffect(() => {
@@ -18,116 +20,92 @@ function Dashboard() {
 
   const openExisting = async () => {
     const res = await window.api.openWorkspaceFolder();
-    if (!res) return;
+    if (!res || !res.success) return;
 
-    if (!res.success) {
-      alert(res.error);
+    if (!user) {
+      alert("Login required");
       return;
     }
 
-    navigate("/workspace", { state: res });
-  };
+    const linkRes = await fetch("http://localhost:5000/api/workspace/link", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify({
+        localPath: res.path,
+        name: res.name,
+      }),
+    });
 
-  const removeWorkspace = async (path) => {
-    await window.api.removeWorkspace(path);
-    loadWorkspaces();
-  };
+    const workspace = await linkRes.json();
 
-  // 🔥 NEW JOIN FUNCTION
-  const joinWorkspace = async () => {
-    const joinCode = prompt("Enter join code");
-    if (!joinCode) return;
-
-    const username = "User_" + Date.now();
-
-    try {
-      const res = await fetch("http://localhost:5000/api/workspace/join", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ joinCode, username }),
-      });
-
-      const workspace = await res.json();
-
-      if (!workspace._id) {
-        alert("Invalid code");
-        return;
-      }
-
-      const location = await window.api.selectFolder();
-      if (!location) return;
-
-      const local = await window.api.createWorkspace({
-        name: workspace.name,
-        location,
-        github: workspace.repoUrl,
-      });
-
-      const finalWorkspace = {
-        ...local,
+    navigate(`/workspace/${workspace._id}`, {
+      state: {
+        ...res,
         workspaceId: workspace._id,
-        joinCode: workspace.joinCode,
-      };
-
-      navigate("/workspace", { state: finalWorkspace });
-
-    } catch (err) {
-      console.error(err);
-      alert("Join failed");
-    }
+      },
+    });
   };
+
+  const joinWorkspace = () => navigate("/join");
 
   return (
     <div className="dashboard">
+
+      {/* TOP BAR */}
+      <div className="dashboard-topbar">
+        <h2 className="dashboard-title-app">Workspace App</h2>
+
+        <div>
+          {!user ? (
+            <>
+              <button className="btn btn-secondary" onClick={() => navigate("/auth")}>
+                Login
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="dashboard-user">👤 {user.username}</span>
+              <button className="btn btn-secondary" onClick={logout}>
+                Logout
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* CARD */}
       <div className="dashboard-card">
         <h1 className="dashboard-title">Workspaces</h1>
 
         <div className="dashboard-actions">
-          <Button onClick={() => navigate("/create")}>
+          <button className="btn btn-primary" onClick={() => navigate("/create")}>
             Create Workspace
-          </Button>
+          </button>
 
-          <Button variant="secondary" onClick={openExisting}>
+          <button className="btn btn-secondary" onClick={openExisting}>
             Open Existing Workspace
-          </Button>
+          </button>
 
-          {/* 🔥 NEW BUTTON */}
-          <Button variant="secondary" onClick={joinWorkspace}>
+          <button className="btn btn-secondary" onClick={joinWorkspace}>
             Join Workspace
-          </Button>
+          </button>
         </div>
 
         <div className="workspace-list">
-          {workspaces.length === 0 && (
-            <p className="empty-text">No workspaces yet</p>
-          )}
-
           {workspaces.map((ws, i) => (
-            <div
-              key={i}
-              className="workspace-item"
-              onClick={() =>
-                navigate("/workspace", { state: ws })
-              }
-            >
+            <div key={i} className="workspace-item">
               <div>
                 <strong>{ws.name}</strong>
-                <p>{ws.path}</p>
+                <br />
+                <span>{ws.path}</span>
               </div>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeWorkspace(ws.path);
-                }}
-              >
-                ✕
-              </button>
             </div>
           ))}
         </div>
+
       </div>
     </div>
   );

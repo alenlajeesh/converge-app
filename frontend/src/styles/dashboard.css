@@ -1,4 +1,3 @@
-/* ROOT */
 .dashboard {
   position: fixed;
   inset: 0;
@@ -7,7 +6,32 @@
   justify-content: center;
   align-items: center;
 
-  background: #0f172a; /* 🔥 match workspace */
+  background: #0f172a;
+}
+
+/* TOP BAR */
+.dashboard-topbar {
+  position: absolute;
+  top: 20px;
+  left: 30px;
+  right: 30px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dashboard-title-app {
+  color: #e2e8f0;
+  font-size: 18px;
+}
+
+/* USER */
+.dashboard-user {
+  background: #1e293b;
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: #e2e8f0;
 }
 
 /* CARD */
@@ -18,22 +42,39 @@
   border-radius: 16px;
   background: #020617;
 
-  border: 1px solid rgba(255,255,255,0.06);
-  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 /* TITLE */
 .dashboard-title {
-  font-size: 22px;
-  font-weight: 600;
-  margin-bottom: 4px;
   color: #e2e8f0;
+  margin-bottom: 15px;
 }
 
-.dashboard-subtitle {
-  font-size: 13px;
-  color: #94a3b8;
-  margin-bottom: 20px;
+/* BUTTON */
+.btn {
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+.btn-secondary {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+.btn-secondary:hover {
+  background: #334155;
 }
 
 /* ACTIONS */
@@ -43,40 +84,7 @@
   gap: 10px;
 }
 
-/* BUTTONS */
-.btn {
-  padding: 11px;
-  border-radius: 8px;
-  font-size: 13px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: 0.15s;
-}
-
-/* PRIMARY */
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-}
-
-.btn-primary:hover {
-  background: #2563eb;
-  box-shadow: 0 6px 16px rgba(37,99,235,0.4);
-}
-
-/* SECONDARY */
-.btn-secondary {
-  background: #0f172a;
-  color: #cbd5e1;
-  border: 1px solid rgba(255,255,255,0.06);
-}
-
-.btn-secondary:hover {
-  background: #1e293b;
-  color: white;
-}
-
-/* WORKSPACE LIST */
+/* LIST */
 .workspace-list {
   margin-top: 20px;
   max-height: 240px;
@@ -88,41 +96,166 @@
   padding: 12px;
   margin-top: 8px;
 
-  border-radius: 10px;
   background: #0f172a;
+  border-radius: 10px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  cursor: pointer;.dashboard {
+  position: fixed;
+  inset: 0;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: #0f172a;
+}
+
+/* TOP BAR */
+.dashboard-topbar {
+  position: absolute;
+  top: 20px;
+  left: 30px;
+  right: 30px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dashboard-title-app {
+  color: #e2e8f0;
+  font-size: 18px;
+}
+
+/* USER */
+.dashboard-user {
+  background: #1e293b;
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: #e2e8f0;
+}
+
+/* CARD */
+.dashboard-card {
+  width: 460px;
+  padding: 28px;
+
+  border-radius: 16px;
+  background: #020617;
+
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* TITLE */
+.dashboard-title {
+  color: #e2e8f0;
+  margin-bottom: 15px;
+}
+
+/* BUTTON */
+.btn {
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+.btn-secondary {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+.btn-secondary:hover {
+  background: #334155;
+}
+
+/* ACTIONS */
+.dashboard-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* LIST */
+.workspace-list {
+  margin-top: 20px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* ITEM */
+.workspace-item {
+  padding: 12px;
+  margin-top: 8px;
+
+  background: #0f172a;
+  border-radius: 10px;
 
   display: flex;
   justify-content: space-between;
   align-items: center;
 
   cursor: pointer;
-  transition: 0.15s;
-  border: 1px solid transparent;
 }
 
 .workspace-item:hover {
   background: #1e293b;
-  border: 1px solid rgba(59,130,246,0.4);
 }
 
-/* TEXT */
 .workspace-item strong {
-  font-size: 13px;
   color: #e2e8f0;
 }
 
 .workspace-item span {
+  color: #94a3b8;
   font-size: 12px;
-  color: #64748b;
 }
 
-/* DELETE BUTTON */
+/* DELETE */
 .workspace-item button {
-  background: transparent;
+  background: none;
   border: none;
   color: #94a3b8;
   cursor: pointer;
-  padding: 4px;
+}
+
+.workspace-item button:hover {
+  color: #f87171;
+}
+}
+
+.workspace-item:hover {
+  background: #1e293b;
+}
+
+.workspace-item strong {
+  color: #e2e8f0;
+}
+
+.workspace-item span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+/* DELETE */
+.workspace-item button {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
 }
 
 .workspace-item button:hover {

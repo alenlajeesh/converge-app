@@ -1,62 +1,121 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
+import { useAuth } from "../context/AuthContext";
+import "../styles/chatview.css";
 
-const socket = io("http://localhost:5000");
+export default function ChatView({ workspaceId }) {
+  const { user, token } = useAuth();
 
-export default function ChatView({ workspaceId, username }) {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
 
-  // 📥 Load old messages
+  const socketRef = useRef(null);
+  const messagesEndRef = useRef(null);
+
+  // ✅ CREATE SOCKET ONLY ONCE
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!token) return;
 
-    fetch(`http://localhost:5000/api/chat/${workspaceId}`)
-      .then((res) => res.json())
-      .then((data) => setMessages(data));
-  }, [workspaceId]);
+    const socket = io("http://localhost:5000", {
+      auth: { token },
+    });
 
-  // 🔌 Socket connection
-  useEffect(() => {
-    if (!workspaceId) return;
+    socketRef.current = socket;
 
-    socket.emit("join-workspace", { workspaceId, username });
+    socket.on("connect", () => {
+      console.log("✅ Socket connected:", socket.id);
+    });
 
+    // 🔥 LISTENER (ONLY ONCE)
     socket.on("receive-message", (msg) => {
+      console.log("📩 Received:", msg);
+
       setMessages((prev) => [...prev, msg]);
     });
 
     return () => {
-      socket.off("receive-message");
+      socket.disconnect();
     };
+  }, [token]);
+
+  // ✅ JOIN ROOM WHEN workspaceId CHANGES
+  useEffect(() => {
+    if (!workspaceId || !socketRef.current) return;
+
+    console.log("📡 Joining workspace:", workspaceId);
+
+    socketRef.current.emit("join-workspace", { workspaceId });
+
   }, [workspaceId]);
 
+  // 📥 LOAD OLD MESSAGES
+  useEffect(() => {
+    if (!workspaceId || !token) return;
+
+    fetch(`http://localhost:5000/api/chat/${workspaceId}`, {
+      headers: {
+        Authorization: "Bearer " + token,
+      },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setMessages(data);
+        } else {
+          setMessages([]);
+        }
+      })
+      .catch((err) => console.error(err));
+
+  }, [workspaceId, token]);
+
+  // 📤 SEND MESSAGE
   const sendMessage = () => {
     if (!message.trim()) return;
+    if (!socketRef.current) return;
 
-    socket.emit("send-message", {
+    socketRef.current.emit("send-message", {
       workspaceId,
       message,
-      username,
     });
 
     setMessage("");
   };
 
+  // 📜 AUTO SCROLL
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   return (
     <div className="chat-container">
       <div className="chat-header">
         <h3>Workspace Chat</h3>
-        <span>Code: {workspaceId?.slice(0, 6)}</span>
+        <span>
+          {workspaceId
+            ? `ID: ${workspaceId.slice(0, 6)}`
+            : "No workspace"}
+        </span>
       </div>
 
       <div className="messages">
+        {messages.length === 0 && (
+          <p style={{ opacity: 0.5 }}>No messages yet...</p>
+        )}
+
         {messages.map((msg, i) => (
-          <div key={i} className="message">
-            <strong>{msg.username}</strong>
+          <div
+            key={i}
+            className={`message ${
+              msg.userId?.toString() === user?._id ? "own" : ""
+            }`}
+          >
+            <strong>{msg.username || "Unknown"}</strong>
             <p>{msg.message}</p>
           </div>
         ))}
+
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="chat-input">
@@ -64,6 +123,7 @@ export default function ChatView({ workspaceId, username }) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="Type message..."
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
         />
         <button onClick={sendMessage}>Send</button>
       </div>

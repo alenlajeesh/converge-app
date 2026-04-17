@@ -6,6 +6,7 @@ const { Server } = require("socket.io");
 require("dotenv").config();
 
 const connectDB = require("./config/db");
+const authRoutes = require("./routes/auth.routes");
 
 const workspaceRoutes = require("./routes/workspace.routes");
 const chatRoutes = require("./routes/chat.routes");
@@ -20,6 +21,7 @@ app.use(express.json());
 // Routes
 app.use("/api/workspace", workspaceRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/auth", authRoutes);
 
 // Create HTTP server
 const server = http.createServer(app);
