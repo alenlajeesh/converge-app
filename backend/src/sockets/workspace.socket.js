@@ -1,83 +1,73 @@
 const Message = require("../models/Message");
 const User = require("../models/User");
+const Workspace = require("../models/Workspace");
 const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
 const workspaceSocket = (io) => {
 
-  // 🔐 SOCKET AUTH MIDDLEWARE
+  // AUTH MIDDLEWARE
   io.use((socket, next) => {
     try {
       const token = socket.handshake.auth.token;
-
-      if (!token) {
-        console.log("❌ No token provided");
-        return next(new Error("Unauthorized"));
-      }
+      if (!token) return next(new Error("Unauthorized"));
 
       const decoded = jwt.verify(token, JWT_SECRET);
-
-      console.log("🔍 DECODED TOKEN:", decoded);
-
-      socket.user = decoded;
-
+      socket.user = decoded; // { id, username }
       next();
     } catch (err) {
-      console.log("❌ Socket auth failed:", err.message);
       next(new Error("Unauthorized"));
     }
   });
 
   io.on("connection", (socket) => {
-    console.log("🔌 Incoming socket:", socket.id);
-    console.log("✅ Authenticated:", socket.user.username);
+    console.log(`🔌 Connected: ${socket.user.username} (${socket.id})`);
 
-    // 📡 JOIN WORKSPACE ROOM
-    socket.on("join-workspace", ({ workspaceId }) => {
-      if (!workspaceId) {
-        console.log("❌ join-workspace: missing workspaceId");
-        return;
+    // JOIN ROOM
+    socket.on("join-workspace", async ({ workspaceId }) => {
+      if (!workspaceId) return;
+
+      try {
+        // verify membership before joining room
+        const workspace = await Workspace.findById(workspaceId);
+        if (!workspace) return;
+
+        const isMember = workspace.members.some(
+          (id) => id.toString() === socket.user.id
+        );
+        if (!isMember) return;
+
+        socket.join(workspaceId);
+        console.log(`📡 ${socket.user.username} joined room: ${workspaceId}`);
+      } catch (err) {
+        console.error("join-workspace error:", err);
       }
-
-      console.log("📡 Joining room:", workspaceId);
-      socket.join(workspaceId);
     });
 
-    // 📨 SEND MESSAGE
+    // SEND MESSAGE
     socket.on("send-message", async ({ workspaceId, message }) => {
       try {
-        if (!workspaceId || !message) {
-          console.log("❌ Invalid message payload");
-          return;
-        }
+        if (!workspaceId || !message?.trim()) return;
 
         const user = await User.findById(socket.user.id);
-
-        if (!user) {
-          console.log("❌ User not found in DB");
-          return;
-        }
+        if (!user) return;
 
         const msg = await Message.create({
           workspaceId,
-          userId: user._id,
+          userId:   user._id,
           username: user.username,
-          message,
+          message:  message.trim()
         });
 
-        console.log("📨 Message saved:", message);
-
-        // 🔥 BROADCAST TO ROOM
         io.to(workspaceId).emit("receive-message", msg);
-
       } catch (err) {
-        console.error("❌ Message error:", err);
+        console.error("send-message error:", err);
       }
     });
 
     socket.on("disconnect", () => {
-      console.log("❌ Disconnected:", socket.id);
+      console.log(`❌ Disconnected: ${socket.user.username}`);
     });
   });
 };

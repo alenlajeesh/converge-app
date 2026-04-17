@@ -1,23 +1,22 @@
 import { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
-import "../styles/chatview.css";
 
 export default function ChatView({ workspaceId }) {
   const { user, token } = useAuth();
 
-  const [message, setMessage] = useState("");
+  const [message,  setMessage]  = useState("");
   const [messages, setMessages] = useState([]);
 
-  const socketRef = useRef(null);
-  const messagesEndRef = useRef(null);
+  const socketRef    = useRef(null);
+  const bottomRef    = useRef(null);
 
-  // ✅ CREATE SOCKET ONLY ONCE
+  // Init socket once
   useEffect(() => {
     if (!token) return;
 
     const socket = io("http://localhost:5000", {
-      auth: { token },
+      auth: { token }
     });
 
     socketRef.current = socket;
@@ -26,103 +25,78 @@ export default function ChatView({ workspaceId }) {
       console.log("✅ Socket connected:", socket.id);
     });
 
-    // 🔥 LISTENER (ONLY ONCE)
     socket.on("receive-message", (msg) => {
-      console.log("📩 Received:", msg);
-
       setMessages((prev) => [...prev, msg]);
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    socket.on("connect_error", (err) => {
+      console.error("Socket error:", err.message);
+    });
+
+    return () => socket.disconnect();
   }, [token]);
 
-  // ✅ JOIN ROOM WHEN workspaceId CHANGES
+  // Join room when workspaceId available
   useEffect(() => {
     if (!workspaceId || !socketRef.current) return;
-
-    console.log("📡 Joining workspace:", workspaceId);
-
     socketRef.current.emit("join-workspace", { workspaceId });
+  }, [workspaceId, socketRef.current]);
 
-  }, [workspaceId]);
-
-  // 📥 LOAD OLD MESSAGES
+  // Load history
   useEffect(() => {
     if (!workspaceId || !token) return;
 
     fetch(`http://localhost:5000/api/chat/${workspaceId}`, {
-      headers: {
-        Authorization: "Bearer " + token,
-      },
+      headers: { Authorization: "Bearer " + token }
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setMessages(data);
-        } else {
-          setMessages([]);
-        }
-      })
-      .catch((err) => console.error(err));
-
+      .then((r) => r.json())
+      .then((data) => setMessages(Array.isArray(data) ? data : []))
+      .catch(console.error);
   }, [workspaceId, token]);
 
-  // 📤 SEND MESSAGE
+  // Auto scroll
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const sendMessage = () => {
-    if (!message.trim()) return;
-    if (!socketRef.current) return;
-
-    socketRef.current.emit("send-message", {
-      workspaceId,
-      message,
-    });
-
+    if (!message.trim() || !socketRef.current) return;
+    socketRef.current.emit("send-message", { workspaceId, message: message.trim() });
     setMessage("");
   };
 
-  // 📜 AUTO SCROLL
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const isOwn = (msg) => {
+    const msgUserId = msg.userId?._id || msg.userId;
+    return msgUserId?.toString() === user?._id?.toString();
+  };
 
   return (
     <div className="chat-container">
       <div className="chat-header">
-        <h3>Workspace Chat</h3>
-        <span>
-          {workspaceId
-            ? `ID: ${workspaceId.slice(0, 6)}`
-            : "No workspace"}
-        </span>
+        <h3>Team Chat</h3>
+        <span>{workspaceId ? `#${workspaceId.slice(-6)}` : "—"}</span>
       </div>
 
       <div className="messages">
         {messages.length === 0 && (
-          <p style={{ opacity: 0.5 }}>No messages yet...</p>
+          <p style={{ color: "#334155", fontSize: 13 }}>
+            No messages yet. Say hi! 👋
+          </p>
         )}
-
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`message ${
-              msg.userId?.toString() === user?._id ? "own" : ""
-            }`}
-          >
+          <div key={msg._id || i} className={`message ${isOwn(msg) ? "own" : ""}`}>
             <strong>{msg.username || "Unknown"}</strong>
             <p>{msg.message}</p>
           </div>
         ))}
-
-        <div ref={messagesEndRef} />
+        <div ref={bottomRef} />
       </div>
 
       <div className="chat-input">
         <input
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type message..."
+          placeholder="Send a message..."
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
         />
         <button onClick={sendMessage}>Send</button>
