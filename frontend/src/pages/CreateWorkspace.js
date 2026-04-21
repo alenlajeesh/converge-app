@@ -24,9 +24,9 @@ function CreateWorkspace({ mode = "create" }) {
     setError("");
     setStatus("");
 
-    if (!user) { navigate("/auth"); return; }
-    if (!location) { setError("Please select a folder"); return; }
-    if (mode === "create" && !name) { setError("Workspace name required"); return; }
+    if (!user)     { navigate("/auth"); return; }
+    if (!location) { setError("Please select a local folder"); return; }
+    if (mode === "create" && !name)     { setError("Workspace name required"); return; }
     if (mode === "join"   && !joinCode) { setError("Join code required"); return; }
 
     setLoading(true);
@@ -34,15 +34,17 @@ function CreateWorkspace({ mode = "create" }) {
     try {
       let onlineWorkspace;
 
+      // ── JOIN ──────────────────────────────
       if (mode === "join") {
         setStatus("Joining workspace...");
+
         const res = await fetch("http://localhost:5000/api/workspace/join", {
           method:  "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization:  "Bearer " + token
           },
-          body: JSON.stringify({ joinCode })
+          body: JSON.stringify({ joinCode: joinCode.trim() })
         });
 
         onlineWorkspace = await res.json();
@@ -50,8 +52,11 @@ function CreateWorkspace({ mode = "create" }) {
           setError(onlineWorkspace.message || "Invalid join code");
           return;
         }
+
+      // ── CREATE ────────────────────────────
       } else {
         setStatus("Creating workspace...");
+
         const res = await fetch("http://localhost:5000/api/workspace/create", {
           method:  "POST",
           headers: {
@@ -60,7 +65,7 @@ function CreateWorkspace({ mode = "create" }) {
           },
           body: JSON.stringify({
             name,
-            repoUrl:   github || null,
+            repoUrl:   github.trim() || null,
             localPath: location
           })
         });
@@ -72,13 +77,19 @@ function CreateWorkspace({ mode = "create" }) {
         }
       }
 
-      // LOCAL SETUP
-      setStatus(github ? "Cloning repository..." : "Setting up local folder...");
+      const repoUrl = onlineWorkspace.repoUrl || null;
 
+      setStatus(
+        repoUrl
+          ? "Cloning repository... this may take a moment"
+          : "Setting up local folder..."
+      );
+
+      // ── LOCAL SETUP ───────────────────────
       const workspace = await window.api.createWorkspace({
-        name:     onlineWorkspace.name,
+        name:   onlineWorkspace.name,
         location,
-        github:   onlineWorkspace.repoUrl || null
+        github: repoUrl
       });
 
       if (!workspace.success) {
@@ -86,11 +97,17 @@ function CreateWorkspace({ mode = "create" }) {
         return;
       }
 
+      // ✅ Save workspaceId locally so reopening from Dashboard works
+      await window.api.saveWorkspaceId(workspace.path, onlineWorkspace._id);
+
       navigate(`/workspace/${onlineWorkspace._id}`, {
         state: {
-          ...workspace,
+          path:        workspace.path,
+          repoPath:    workspace.repoPath,
+          name:        workspace.name,
           workspaceId: onlineWorkspace._id,
-          joinCode:    onlineWorkspace.joinCode
+          joinCode:    onlineWorkspace.joinCode,
+          repoUrl
         }
       });
 
@@ -117,7 +134,9 @@ function CreateWorkspace({ mode = "create" }) {
                 : "Set up a new collaborative project"}
             </p>
           </div>
-          <button className="create-back" onClick={() => navigate("/")}>← Back</button>
+          <button className="create-back" onClick={() => navigate("/")}>
+            ← Back
+          </button>
         </div>
 
         {error  && <div className="create-error">{error}</div>}
@@ -159,7 +178,9 @@ function CreateWorkspace({ mode = "create" }) {
 
         {mode === "create" && (
           <div className="input-group">
-            <label>GitHub URL <span className="optional">(optional)</span></label>
+            <label>
+              GitHub URL <span className="optional">(optional)</span>
+            </label>
             <input
               value={github}
               onChange={(e) => setGithub(e.target.value)}

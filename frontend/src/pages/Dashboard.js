@@ -23,13 +23,20 @@ function Dashboard() {
 
     try {
       setLoading(true);
+
+      // ✅ Pass workspaceId if stored locally so linkWorkspace
+      // fetches the exact document instead of searching by localPath
       const linkRes = await fetch("http://localhost:5000/api/workspace/link", {
         method:  "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization:  "Bearer " + token
         },
-        body: JSON.stringify({ localPath: ws.path, name: ws.name })
+        body: JSON.stringify({
+          localPath:   ws.path,
+          name:        ws.name,
+          workspaceId: ws.workspaceId || null  // ✅ pass stored id
+        })
       });
 
       const workspace = await linkRes.json();
@@ -37,9 +44,11 @@ function Dashboard() {
 
       navigate(`/workspace/${workspace._id}`, {
         state: {
-          ...ws,
+          path:        ws.path,
+          repoPath:    ws.repoPath || ws.path,
+          name:        ws.name,
           workspaceId: workspace._id,
-          joinCode:    workspace.joinCode
+          joinCode:    workspace.joinCode  // ✅ always from DB
         }
       });
     } catch (err) {
@@ -67,7 +76,10 @@ function Dashboard() {
           "Content-Type": "application/json",
           Authorization:  "Bearer " + token
         },
-        body: JSON.stringify({ localPath: res.path, name: res.name })
+        body: JSON.stringify({
+          localPath: res.path,
+          name:      res.name
+        })
       });
 
       const workspace = await linkRes.json();
@@ -77,9 +89,11 @@ function Dashboard() {
 
       navigate(`/workspace/${workspace._id}`, {
         state: {
-          ...res,
+          path:        res.path,
+          repoPath:    res.repoPath || res.path,
+          name:        res.name,
           workspaceId: workspace._id,
-          joinCode:    workspace.joinCode
+          joinCode:    workspace.joinCode  // ✅ always from DB
         }
       });
     } catch (err) {
@@ -92,7 +106,6 @@ function Dashboard() {
 
   const removeWorkspace = async (e, ws) => {
     e.stopPropagation();
-    if (!confirm(`Remove "${ws.name}" from list?`)) return;
     await window.api.removeWorkspace(ws.path);
     loadWorkspaces();
   };
@@ -102,7 +115,7 @@ function Dashboard() {
       <div className="dashboard-topbar">
         <div className="dashboard-brand">
           <span className="dashboard-brand-icon">⬡</span>
-          <span className="dashboard-brand-name">DevSpace</span>
+          <span className="dashboard-brand-name">Converge</span>
         </div>
         <div className="dashboard-topbar-right">
           {!user ? (
@@ -126,16 +139,24 @@ function Dashboard() {
       <div className="dashboard-body">
         <div className="dashboard-left">
           <h1 className="dashboard-heading">Your Workspaces</h1>
-          <p className="dashboard-sub">Open a project or create a new collaborative workspace</p>
-
+          <p className="dashboard-sub">
+            Open a project or create a new collaborative workspace
+          </p>
           <div className="dashboard-actions">
             <button className="btn btn-primary" onClick={() => navigate("/create")}>
               <span>+</span> New Workspace
             </button>
-            <button className="btn btn-secondary" onClick={openExisting} disabled={loading}>
+            <button
+              className="btn btn-secondary"
+              onClick={openExisting}
+              disabled={loading}
+            >
               📂 Open Existing
             </button>
-            <button className="btn btn-secondary" onClick={() => navigate("/join")}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => navigate("/join")}
+            >
               🔗 Join Workspace
             </button>
           </div>

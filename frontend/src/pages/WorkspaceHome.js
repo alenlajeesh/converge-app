@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 import ActivityBar  from "../components/ActivityBar";
 import Sidebar      from "../components/Sidebar";
@@ -13,43 +14,47 @@ import VideoView    from "../components/VideoView";
 import "../styles/workspace.css";
 
 function WorkspaceHome() {
-  const { state }    = useLocation();
-  const { id }       = useParams();
-  const navigate     = useNavigate();
+  const { state }  = useLocation();
+  const { id }     = useParams();
+  const navigate   = useNavigate();
+  const { token }  = useAuth();
 
-  const workspaceId  = id;
-  const joinCode     = state?.joinCode;
-  const rootPath     = state?.repoPath || state?.path;
+  const workspaceId = id;
+  const rootPath    = state?.repoPath || state?.path;
 
-  const [tree, setTree] = useState([]);
-  const [expanded, setExpanded] = useState({});
+  const [tree,         setTree]         = useState([]);
+  const [expanded,     setExpanded]     = useState({});
   const [selectedFile, setSelectedFile] = useState(null);
-  const [content, setContent] = useState("");
-  const [openFiles, setOpenFiles] = useState([]);
-  const [activeView, setActiveView] = useState("explorer");
+  const [content,      setContent]      = useState("");
+  const [openFiles,    setOpenFiles]    = useState([]);
+  const [activeView,   setActiveView]   = useState("explorer");
   const [showTerminal, setShowTerminal] = useState(true);
-  const [treeLoading, setTreeLoading] = useState(false);
-
-  // ✅ selectedDir (now used so no ESLint warning)
-  const [selectedDir, setSelectedDir] = useState(null);
-
-  const [contextMenu, setContextMenu] = useState({
-    visible: false,
-    x: 0,
-    y: 0,
-    node: null
+  const [treeLoading,  setTreeLoading]  = useState(false);
+  const [selectedDir,  setSelectedDir]  = useState(null);
+  const [sidebarOpen,  setSidebarOpen]  = useState(true); // ✅ sidebar toggle
+  const [dbWorkspace,  setDbWorkspace]  = useState(null);
+  const [contextMenu,  setContextMenu]  = useState({
+    visible: false, x: 0, y: 0, node: null
   });
 
-  // Redirect if no path
+  // ✅ Fetch fresh workspace from DB for joinCode
   useEffect(() => {
-    if (!rootPath) {
-      console.error("❌ No rootPath — redirecting");
-      navigate("/");
-    }
+    if (!workspaceId || !token) return;
+    fetch(`http://localhost:5000/api/workspace/${workspaceId}`, {
+      headers: { Authorization: "Bearer " + token }
+    })
+      .then((r) => r.json())
+      .then((data) => { if (data._id) setDbWorkspace(data); })
+      .catch(console.error);
+  }, [workspaceId, token]);
+
+  const joinCode = dbWorkspace?.joinCode || state?.joinCode;
+
+  useEffect(() => {
+    if (!rootPath) navigate("/", { replace: true });
   }, [rootPath, navigate]);
 
-  // Build tree nodes
-  const buildTree = async (dirPath) => {
+  const buildTree = useCallback(async (dirPath) => {
     try {
       const items = await window.api.readDir(dirPath);
       return items
@@ -66,77 +71,68 @@ function WorkspaceHome() {
       console.error("readDir error:", err);
       return [];
     }
-  };
+  }, []);
 
-  // ✅ FIXED: wrapped with useCallback
   const loadRoot = useCallback(async () => {
     if (!rootPath) return;
     setTreeLoading(true);
-
     try {
       const children = await buildTree(rootPath);
       setTree([{
-        name: rootPath.split(/[\\/]/).pop(),
-        path: rootPath,
-        isDir: true,
+        name:     rootPath.split(/[\\/]/).pop(),
+        path:     rootPath,
+        isDir:    true,
         children
       }]);
-
       setExpanded({ [rootPath]: true });
+    } catch (err) {
+      console.error("loadRoot error:", err);
     } finally {
       setTreeLoading(false);
     }
-  }, [rootPath]);
+  }, [rootPath, buildTree]);
 
   useEffect(() => {
     if (rootPath) loadRoot();
   }, [rootPath, loadRoot]);
 
-  // Toggle folder
   const toggleFolder = async (item) => {
     if (!item.isDir) return;
-
     if (expanded[item.path]) {
       setExpanded((prev) => ({ ...prev, [item.path]: false }));
       return;
     }
-
     const children = await buildTree(item.path);
-
     const updateTree = (nodes) =>
       nodes.map((n) => {
         if (n.path === item.path) return { ...n, children };
-        if (n.children) return { ...n, children: updateTree(n.children) };
+        if (n.children)           return { ...n, children: updateTree(n.children) };
         return n;
       });
-
     setTree((prev) => updateTree(prev));
     setExpanded((prev) => ({ ...prev, [item.path]: true }));
   };
 
-  // Open file
   const openFile = async (file) => {
-    if (file.isDir) {
-      toggleFolder(file);
-      return;
-    }
-
+    if (file.isDir) { toggleFolder(file); return; }
     try {
       const data = await window.api.readFile(file.path);
       setSelectedFile(file.path);
       setContent(data);
-
+      setSelectedDir(
+        file.path.substring(0, file.path.lastIndexOf(
+          file.path.includes("/") ? "/" : "\\"
+        ))
+      );
       setOpenFiles((prev) =>
         prev.includes(file.path) ? prev : [...prev, file.path]
       );
-
       setActiveView("explorer");
     } catch (err) {
       console.error("openFile error:", err);
     }
   };
 
-  // Switch tab
   const setActiveFile = async (filePath) => {
     try {
       const data = await window.api.readFile(filePath);
@@ -147,118 +143,122 @@ function WorkspaceHome() {
     }
   };
 
-  // Close tab
-  const closeFile = (filePath) => {
-    const updated = openFiles.filter((f) => f !== filePath);
-    setOpenFiles(updated);
-
-    if (filePath === selectedFile) {
-      if (updated.length > 0) {
-        setActiveFile(updated[updated.length - 1]);
-      } else {
-        setSelectedFile(null);
-        setContent("");
+  const closeFile = useCallback((filePath) => {
+    setOpenFiles((prev) => {
+      const updated = prev.filter((f) => f !== filePath);
+      if (filePath === selectedFile) {
+        if (updated.length > 0) {
+          setActiveFile(updated[updated.length - 1]);
+        } else {
+          setSelectedFile(null);
+          setContent("");
+        }
       }
-    }
-  };
+      return updated;
+    });
+  }, [selectedFile]);
 
-  // Context menu action
-  const handleContextAction = async (action) => {
-    const node = contextMenu.node;
+  const handleContextAction = async (action, node) => {
     if (!node) return;
-
-    const sep = node.path.includes("/") ? "/" : "\\";
-    const parentPath = node.isDir
+    const sep       = node.path.includes("/") ? "/" : "\\";
+    const targetDir = node.isDir
       ? node.path
       : node.path.substring(0, node.path.lastIndexOf(sep));
 
-    try {
-      if (action === "newFile") {
-        let fileName = "newFile";
-        let counter = 1;
-
-        while (true) {
-          const candidate = parentPath + sep + fileName;
-          const result = await window.api.createFile(candidate);
-          if (result.success) break;
-          fileName = `newFile${counter++}`;
-        }
+    if (action === "newFile") {
+      let fileName = "newFile";
+      let counter  = 1;
+      while (counter <= 20) {
+        const result = await window.api.createFile(targetDir + sep + fileName);
+        if (result.success) break;
+        fileName = `newFile${counter++}`;
       }
-
-      if (action === "newFolder") {
-        let folderName = "newFolder";
-        let counter = 1;
-
-        while (true) {
-          const candidate = parentPath + sep + folderName;
-          const result = await window.api.createFolder(candidate);
-          if (result.success) break;
-          folderName = `newFolder${counter++}`;
-        }
-      }
-
-      if (action === "rename") {
-        const newName = prompt("Rename to:");
-        if (!newName?.trim()) return;
-
-        const newPath = parentPath + sep + newName.trim();
-        const result = await window.api.renamePath(node.path, newPath);
-
-        if (!result.success) {
-          alert(result.error);
-          return;
-        }
-      }
-
-      if (action === "delete") {
-        // ✅ FIX: ESLint safe version
-        if (!window.confirm(`Delete "${node.name}"?`)) return;
-
-        await window.api.deletePath(node.path);
-
-        if (openFiles.includes(node.path)) {
-          closeFile(node.path);
-        }
-      }
-
       await loadRoot();
-    } catch (err) {
-      console.error("Context action failed:", err);
     }
 
-    setContextMenu((prev) => ({ ...prev, visible: false }));
+    if (action === "newFolder") {
+      let folderName = "newFolder";
+      let counter    = 1;
+      while (counter <= 20) {
+        const result = await window.api.createFolder(targetDir + sep + folderName);
+        if (result.success) break;
+        folderName = `newFolder${counter++}`;
+      }
+      await loadRoot();
+    }
   };
 
-  const workspaceName = rootPath?.split(/[\\/]/).pop() || "Workspace";
+  const handleRename = async (node, newName) => {
+    const sep        = node.path.includes("/") ? "/" : "\\";
+    const parentPath = node.path.substring(0, node.path.lastIndexOf(sep));
+    const newPath    = parentPath + sep + newName;
+    try {
+      const result = await window.api.renamePath(node.path, newPath);
+      if (!result.success) { console.error(result.error); return; }
+      if (openFiles.includes(node.path)) {
+        setOpenFiles((prev) => prev.map((f) => f === node.path ? newPath : f));
+        if (selectedFile === node.path) setSelectedFile(newPath);
+      }
+      await loadRoot();
+    } catch (err) {
+      console.error("Rename failed:", err);
+    }
+  };
+
+  const handleDelete = async (node) => {
+    try {
+      await window.api.deletePath(node.path);
+      if (openFiles.includes(node.path)) closeFile(node.path);
+      await loadRoot();
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
+  };
+
+  const workspaceName = dbWorkspace?.name
+    || rootPath?.split(/[\\/]/).pop()
+    || "Workspace";
+
+  if (!rootPath) {
+    return (
+      <div style={{
+        position: "fixed", inset: 0,
+        background: "#0f172a",
+        display: "flex", alignItems: "center",
+        justifyContent: "center",
+        color: "#475569", fontSize: 14
+      }}>
+        Redirecting...
+      </div>
+    );
+  }
 
   return (
-    <div
-      className="workspace"
-      onClick={() =>
-        contextMenu.visible &&
-        setContextMenu((p) => ({ ...p, visible: false }))
-      }
-    >
-      {/* FIX: uses selectedDir so no unused-variable warning */}
-      {selectedDir && null}
+    <div className="workspace">
+      {/* ACTIVITY BAR */}
+      <ActivityBar
+        active={activeView}
+        setActive={setActiveView}
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+      />
 
-      <ActivityBar active={activeView} setActive={setActiveView} />
-
+      {/* SIDEBAR */}
       <Sidebar
         tree={tree}
         expanded={expanded}
-        loading={treeLoading}
         toggleFolder={toggleFolder}
         openFile={openFile}
         setContextMenu={setContextMenu}
         setSelectedDir={setSelectedDir}
+        open={sidebarOpen}
       />
 
+      {/* MAIN */}
       <div className="main-area">
         <div className="topbar">
           <div className="topbar-left">
             <span className="workspace-name">{workspaceName}</span>
-
             {joinCode && (
               <div className="topbar-joincode">
                 <span>Invite:</span>
@@ -266,15 +266,13 @@ function WorkspaceHome() {
               </div>
             )}
           </div>
-
           <div className="topbar-actions">
             <button
               className={`topbar-btn ${showTerminal ? "active" : ""}`}
-              onClick={() => setShowTerminal(!showTerminal)}
+              onClick={() => setShowTerminal((v) => !v)}
             >
               ⌨ Terminal
             </button>
-
             <button className="topbar-btn" onClick={() => navigate("/")}>
               ← Home
             </button>
@@ -292,12 +290,8 @@ function WorkspaceHome() {
               closeFile={closeFile}
             />
           )}
-
-          {activeView === "chat" && (
-            <ChatView workspaceId={workspaceId} />
-          )}
-
-          {activeView === "call" && <CallView />}
+          {activeView === "chat"  && <ChatView workspaceId={workspaceId} />}
+          {activeView === "call"  && <CallView />}
           {activeView === "video" && <VideoView />}
         </div>
 
@@ -313,10 +307,11 @@ function WorkspaceHome() {
         x={contextMenu.x}
         y={contextMenu.y}
         visible={contextMenu.visible}
-        onClose={() =>
-          setContextMenu((p) => ({ ...p, visible: false }))
-        }
+        node={contextMenu.node}
+        onClose={() => setContextMenu((p) => ({ ...p, visible: false }))}
         onAction={handleContextAction}
+        onRename={handleRename}
+        onDelete={handleDelete}
       />
     </div>
   );

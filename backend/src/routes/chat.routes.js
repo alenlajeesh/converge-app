@@ -1,9 +1,9 @@
 const express = require("express");
-const router = express.Router();
-const auth = require("../middleware/auth.middleware");
-const { getMessages } = require("../controllers/chat.controller");
+const router  = express.Router();
+const auth    = require("../middleware/auth.middleware");
+const { getMessages, deleteMessage } = require("../controllers/chat.controller");
 
-// ✅ auth added
-router.get("/:workspaceId", auth, getMessages);
+router.get("/:workspaceId",       auth, getMessages);
+router.delete("/:messageId",      auth, deleteMessage);
 
 module.exports = router;
