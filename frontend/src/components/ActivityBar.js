@@ -1,4 +1,4 @@
-import { FaFolder, FaComments, FaPhone, FaVideo } from "react-icons/fa";
+import { FaFolder, FaComments, FaPhone, FaVideo, FaTasks } from "react-icons/fa";
 
 export default function ActivityBar({ active, setActive, sidebarOpen, setSidebarOpen }) {
   const handleClick = (view) => {
@@ -16,10 +16,11 @@ export default function ActivityBar({ active, setActive, sidebarOpen, setSidebar
   };
 
   const items = [
-    { view: "explorer", icon: <FaFolder />,   title: "Explorer"    },
-    { view: "chat",     icon: <FaComments />, title: "Team Chat"   },
-    { view: "call",     icon: <FaPhone />,    title: "Voice Call"  },
-    { view: "video",    icon: <FaVideo />,    title: "Video Call"  },
+    { view: "explorer", icon: <FaFolder />,   title: "Explorer"   },
+    { view: "chat",     icon: <FaComments />, title: "Team Chat"  },
+    { view: "tasks",    icon: <FaTasks />,    title: "Tasks"      },
+    { view: "call",     icon: <FaPhone />,    title: "Voice Call" },
+    { view: "video",    icon: <FaVideo />,    title: "Video Call" },
   ];
 
   return (
@@ -35,8 +36,8 @@ export default function ActivityBar({ active, setActive, sidebarOpen, setSidebar
             onClick={() => handleClick(view)}
             className={[
               "activity-bar-item",
-              isActive && !isCollapsed ? "active"       : "",
-              isCollapsed             ? "active-muted"  : "",
+              isActive && !isCollapsed ? "active"      : "",
+              isCollapsed              ? "active-muted": "",
             ].filter(Boolean).join(" ")}
           >
             {icon}

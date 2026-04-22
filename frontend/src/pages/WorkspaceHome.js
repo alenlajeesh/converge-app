@@ -10,6 +10,7 @@ import Terminal     from "../components/Terminal";
 import ChatView     from "../components/ChatView";
 import CallView     from "../components/CallView";
 import VideoView    from "../components/VideoView";
+import TaskView from "../components/TaskView";
 
 import "../styles/workspace.css";
 
@@ -291,6 +292,7 @@ function WorkspaceHome() {
             />
           )}
           {activeView === "chat"  && <ChatView workspaceId={workspaceId} />}
+		  {activeView === "tasks" && <TaskView workspaceId={workspaceId} />}
           {activeView === "call"  && <CallView />}
           {activeView === "video" && <VideoView />}
         </div>
