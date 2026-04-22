@@ -16,10 +16,10 @@ function createWindow() {
       sandbox:          false,
     },
   });
-  mainWindow.loadURL("http://localhost:3000");
-  //mainWindow.loadFile(
-  //  path.join(__dirname, "../frontend/build/index.html")
-  //);
+  //mainWindow.loadURL("http://localhost:3000");
+  mainWindow.loadFile(
+	path.join(__dirname, "../frontend/build/index.html")
+  );
   mainWindow.on("closed", () => { mainWindow = null; });
 }
 
