@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 
 export default function Terminal({ rootPath, onClose }) {
   const [history, setHistory] = useState([
-    "Converge Terminal (real shell)",
+    "Terminal Shell",
   ]);
   const [input, setInput] = useState("");
   const [commandHistory, setCommandHistory] = useState([]);

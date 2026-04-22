@@ -1,20 +1,20 @@
-const Message = require("../models/Message");
-const User = require("../models/User");
+const Message   = require("../models/Message");
+const User      = require("../models/User");
 const Workspace = require("../models/Workspace");
-const jwt = require("jsonwebtoken");
+const jwt       = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
 const workspaceSocket = (io) => {
 
-  // AUTH MIDDLEWARE
+  // ── AUTH MIDDLEWARE ──────────────────────
   io.use((socket, next) => {
     try {
       const token = socket.handshake.auth.token;
       if (!token) return next(new Error("Unauthorized"));
 
       const decoded = jwt.verify(token, JWT_SECRET);
-      socket.user = decoded; // { id, username }
+      socket.user   = decoded; // { id, username }
       next();
     } catch (err) {
       next(new Error("Unauthorized"));
@@ -24,12 +24,10 @@ const workspaceSocket = (io) => {
   io.on("connection", (socket) => {
     console.log(`🔌 Connected: ${socket.user.username} (${socket.id})`);
 
-    // JOIN ROOM
+    // ── JOIN ROOM ────────────────────────────
     socket.on("join-workspace", async ({ workspaceId }) => {
       if (!workspaceId) return;
-
       try {
-        // verify membership before joining room
         const workspace = await Workspace.findById(workspaceId);
         if (!workspace) return;
 
@@ -45,7 +43,7 @@ const workspaceSocket = (io) => {
       }
     });
 
-    // SEND MESSAGE
+    // ── SEND MESSAGE ─────────────────────────
     socket.on("send-message", async ({ workspaceId, message }) => {
       try {
         if (!workspaceId || !message?.trim()) return;
@@ -63,6 +61,32 @@ const workspaceSocket = (io) => {
         io.to(workspaceId).emit("receive-message", msg);
       } catch (err) {
         console.error("send-message error:", err);
+      }
+    });
+
+    // ── DELETE MESSAGE ───────────────────────
+    socket.on("delete-message", async ({ messageId, workspaceId }) => {
+      try {
+        if (!messageId || !workspaceId) return;
+
+        const message = await Message.findById(messageId);
+        if (!message) return;
+
+        // ✅ Only owner can delete
+        if (message.userId.toString() !== socket.user.id) {
+          console.log(`❌ ${socket.user.username} tried to delete someone else's message`);
+          return;
+        }
+
+        await Message.findByIdAndDelete(messageId);
+
+        // ✅ Broadcast deletion to everyone in the room
+        // so all clients remove it from their UI instantly
+        io.to(workspaceId).emit("message-deleted", { messageId });
+
+        console.log(`🗑️ Message ${messageId} deleted by ${socket.user.username}`);
+      } catch (err) {
+        console.error("delete-message error:", err);
       }
     });
 
