@@ -8,13 +8,13 @@ export default function ChatView({ workspaceId }) {
   const [message,   setMessage]   = useState("");
   const [messages,  setMessages]  = useState([]);
   const [connected, setConnected] = useState(false);
-  const [hoveredId, setHoveredId] = useState(null); // for showing delete btn
+  const [hoveredId, setHoveredId] = useState(null);
 
   const socketRef = useRef(null);
   const bottomRef = useRef(null);
   const joinedRef = useRef(null);
 
-  // ── Init socket ───────────────────────────
+  // Init socket
   useEffect(() => {
     if (!token) return;
 
@@ -36,21 +36,18 @@ export default function ChatView({ workspaceId }) {
     socket.on("disconnect", () => setConnected(false));
 
     socket.on("receive-message", (msg) => {
-      if (msg.workspaceId?.toString() === workspaceId?.toString()) {
-        setMessages((prev) => {
-          if (prev.some((m) => m._id === msg._id)) return prev;
-          return [...prev, msg];
-        });
-      }
+      setMessages((prev) => {
+        if (prev.some((m) => m._id === msg._id)) return prev;
+        return [...prev, msg];
+      });
     });
 
-    // ✅ Listen for deletions — remove from UI for everyone
     socket.on("message-deleted", ({ messageId }) => {
       setMessages((prev) => prev.filter((m) => m._id !== messageId));
     });
 
     socket.on("connect_error", (err) => {
-      console.error("❌ Socket error:", err.message);
+      console.error("Socket error:", err.message);
     });
 
     return () => {
@@ -58,19 +55,19 @@ export default function ChatView({ workspaceId }) {
       socketRef.current = null;
       joinedRef.current = null;
     };
-  }, [token]);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Join room ─────────────────────────────
+  // Join room
   useEffect(() => {
     if (!workspaceId || !socketRef.current) return;
-    if (joinedRef.current === workspaceId)  return;
+    if (joinedRef.current === workspaceId) return;
 
     socketRef.current.emit("join-workspace", { workspaceId });
     joinedRef.current = workspaceId;
     setMessages([]);
-  }, [workspaceId]);
+  }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Load history ──────────────────────────
+  // Load history
   useEffect(() => {
     if (!workspaceId || !token) return;
 
@@ -82,12 +79,12 @@ export default function ChatView({ workspaceId }) {
       .catch(console.error);
   }, [workspaceId, token]);
 
-  // ── Auto scroll ───────────────────────────
+  // Auto scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ── Send ──────────────────────────────────
+  // Send
   const sendMessage = useCallback(() => {
     if (!message.trim() || !socketRef.current || !workspaceId) return;
     socketRef.current.emit("send-message", {
@@ -97,14 +94,10 @@ export default function ChatView({ workspaceId }) {
     setMessage("");
   }, [message, workspaceId]);
 
-  // ── Delete ────────────────────────────────
+  // Delete
   const deleteMessage = useCallback((msg) => {
     if (!socketRef.current) return;
-
-    // Optimistic UI — remove instantly for the sender
     setMessages((prev) => prev.filter((m) => m._id !== msg._id));
-
-    // Tell server via socket (server re-broadcasts to all others)
     socketRef.current.emit("delete-message", {
       messageId:   msg._id,
       workspaceId
@@ -153,7 +146,6 @@ export default function ChatView({ workspaceId }) {
               <strong>{msg.username || "Unknown"}</strong>
               <p>{msg.message}</p>
 
-              {/* ✅ Delete button — only on own messages, only on hover */}
               {own && hoveredId === msg._id && (
                 <button
                   className="msg-delete-btn"
