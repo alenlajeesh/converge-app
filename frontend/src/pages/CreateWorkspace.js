@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "../styles/createWorkspace.css";
+import * as api from "../api";
 
 function CreateWorkspace({ mode = "create" }) {
   const [name,     setName]     = useState("");
@@ -16,7 +17,7 @@ function CreateWorkspace({ mode = "create" }) {
   const navigate = useNavigate();
 
   const selectFolder = async () => {
-    const path = await window.api.selectFolder();
+    const path = await api.selectFolder();
     if (path) setLocation(path);
   };
 
@@ -86,7 +87,7 @@ function CreateWorkspace({ mode = "create" }) {
       );
 
       // ── LOCAL SETUP ───────────────────────
-      const workspace = await window.api.createWorkspace({
+      const workspace = await api.createWorkspace({
         name:   onlineWorkspace.name,
         location,
         github: repoUrl
@@ -98,7 +99,7 @@ function CreateWorkspace({ mode = "create" }) {
       }
 
       // ✅ Save workspaceId locally so reopening from Dashboard works
-      await window.api.saveWorkspaceId(workspace.path, onlineWorkspace._id);
+      await api.saveWorkspaceId(workspace.path, onlineWorkspace._id);
 
       navigate(`/workspace/${onlineWorkspace._id}`, {
         state: {
