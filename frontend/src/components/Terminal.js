@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import * as api from "../api";
 
 export default function Terminal({ rootPath, onClose }) {
   const [history, setHistory] = useState([
@@ -32,7 +33,7 @@ export default function Terminal({ rootPath, onClose }) {
     setInput("");
 
     try {
-      const result = await window.api.runCommand(
+      const result = await api.runCommand(
         command,
         rootPath
       );

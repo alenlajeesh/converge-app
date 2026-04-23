@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "../styles/dashboard.css";
+import * as api from "../api";
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -14,7 +15,7 @@ function Dashboard() {
   }, []);
 
   const loadWorkspaces = async () => {
-    const data = await window.api.getWorkspaces();
+    const data = await api.getWorkspaces();
     setWorkspaces(data || []);
   };
 
@@ -64,7 +65,7 @@ function Dashboard() {
 
     try {
       setLoading(true);
-      const res = await window.api.openWorkspaceFolder();
+      const res = await api.openWorkspaceFolder();
       if (!res || !res.success) {
         if (res?.error) alert(res.error);
         return;
@@ -106,7 +107,7 @@ function Dashboard() {
 
   const removeWorkspace = async (e, ws) => {
     e.stopPropagation();
-    await window.api.removeWorkspace(ws.path);
+    await api.removeWorkspace(ws.path);
     loadWorkspaces();
   };
 

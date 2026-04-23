@@ -11,7 +11,7 @@ import ChatView     from "../components/ChatView";
 import CallView     from "../components/CallView";
 import VideoView    from "../components/VideoView";
 import TaskView from "../components/TaskView";
-
+import * as api from "../api";
 import "../styles/workspace.css";
 
 function WorkspaceHome() {
@@ -57,7 +57,7 @@ function WorkspaceHome() {
 
   const buildTree = useCallback(async (dirPath) => {
     try {
-      const items = await window.api.readDir(dirPath);
+      const items = await api.readDir(dirPath);
       return items
         .sort((a, b) => {
           if (a.isDir && !b.isDir) return -1;
@@ -117,7 +117,7 @@ function WorkspaceHome() {
   const openFile = async (file) => {
     if (file.isDir) { toggleFolder(file); return; }
     try {
-      const data = await window.api.readFile(file.path);
+      const data = await api.readFile(file.path);
       setSelectedFile(file.path);
       setContent(data);
       setSelectedDir(
@@ -136,7 +136,7 @@ function WorkspaceHome() {
 
   const setActiveFile = async (filePath) => {
     try {
-      const data = await window.api.readFile(filePath);
+      const data = await api.readFile(filePath);
       setSelectedFile(filePath);
       setContent(data);
     } catch (err) {
@@ -170,7 +170,7 @@ function WorkspaceHome() {
       let fileName = "newFile";
       let counter  = 1;
       while (counter <= 20) {
-        const result = await window.api.createFile(targetDir + sep + fileName);
+        const result = await api.createFile(targetDir + sep + fileName);
         if (result.success) break;
         fileName = `newFile${counter++}`;
       }
@@ -181,7 +181,7 @@ function WorkspaceHome() {
       let folderName = "newFolder";
       let counter    = 1;
       while (counter <= 20) {
-        const result = await window.api.createFolder(targetDir + sep + folderName);
+        const result = await api.createFolder(targetDir + sep + folderName);
         if (result.success) break;
         folderName = `newFolder${counter++}`;
       }
@@ -194,7 +194,7 @@ function WorkspaceHome() {
     const parentPath = node.path.substring(0, node.path.lastIndexOf(sep));
     const newPath    = parentPath + sep + newName;
     try {
-      const result = await window.api.renamePath(node.path, newPath);
+      const result = await api.renamePath(node.path, newPath);
       if (!result.success) { console.error(result.error); return; }
       if (openFiles.includes(node.path)) {
         setOpenFiles((prev) => prev.map((f) => f === node.path ? newPath : f));
@@ -208,7 +208,7 @@ function WorkspaceHome() {
 
   const handleDelete = async (node) => {
     try {
-      await window.api.deletePath(node.path);
+      await api.deletePath(node.path);
       if (openFiles.includes(node.path)) closeFile(node.path);
       await loadRoot();
     } catch (err) {

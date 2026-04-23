@@ -2,56 +2,21 @@
   "name": "converge-app",
   "version": "1.0.0",
   "description": "Converge Desktop App",
-  "main": "electron/main.js",
   "private": true,
-
   "scripts": {
     "frontend": "cd frontend && npm start",
     "backend": "cd backend && node src/server.js",
-    "electron": "electron .",
-    "dev": "concurrently \"npm run backend\" \"npm run frontend\" \"wait-on http://localhost:3000 && npm run electron\"",
-
-    "frontend:build": "cd frontend && npm run build",
-    "dist": "npm run frontend:build && electron-builder"
+    "tauri:dev": "npx tauri dev",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\" \"wait-on http://localhost:3000 && npm run tauri:dev\"",
+    "tauri:build": "npm run frontend:build && npx tauri build",
+    "frontend:build": "cd frontend && npm run build"
   },
-
-  "build": {
-    "appId": "com.converge.app",
-    "productName": "Converge",
-
-    "asar": true,
-    "compression": "maximum",
-
-    "directories": {
-      "output": "dist"
-    },
-
-    "files": [
-      "electron/**/*",
-      "frontend/build/**/*",
-      "package.json"
-    ],
-
-    "win": {
-      "target": "nsis",
-      "icon": "assets/team.ico"
-    },
-
-    "linux": {
-      "target": "AppImage",
-      "icon": "assets/team.png"
-    },
-
-    "mac": {
-      "target": "dmg",
-      "icon": "assets/team.icns"
-    }
-  },
-
   "devDependencies": {
-    "electron": "^41.0.3",
-    "electron-builder": "^26.8.1",
+    "@tauri-apps/cli": "^2",
     "concurrently": "^9.2.1",
     "wait-on": "^9.0.4"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
   }
 }

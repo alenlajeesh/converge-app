@@ -1,7 +1,0 @@
-{
-  "name": "converge-app",
-  "version": "1.0.0",
-  "description": "Converge Desktop App",
-  "main": "electron/main.js",
-  "private": true
-}
