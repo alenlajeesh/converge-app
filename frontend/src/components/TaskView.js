@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import "../styles/taskview.css";
@@ -33,13 +34,11 @@ export default function TaskView({ workspaceId }) {
   const [creating, setCreating] = useState(false);
   const [error,    setError]    = useState("");
 
-  // ── Filter + Sort state ──────────────────
   const [filterMember,   setFilterMember]   = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
   const [sortBy,         setSortBy]         = useState("newest");
   const [searchQuery,    setSearchQuery]    = useState("");
 
-  // Form state
   const [form, setForm] = useState({
     title:        "",
     description:  "",
@@ -47,12 +46,11 @@ export default function TaskView({ workspaceId }) {
     priority:     "medium"
   });
 
-  const headers = {
+  const headers = useMemo(() => ({
     "Content-Type": "application/json",
     Authorization:  "Bearer " + token
-  };
+  }), [token]);
 
-  // ── Load tasks ───────────────────────────
   const loadTasks = useCallback(async () => {
     if (!workspaceId || !token) return;
     setLoading(true);
@@ -65,9 +63,8 @@ export default function TaskView({ workspaceId }) {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, token]);
+  }, [workspaceId, token, headers]);
 
-  // ── Load members ─────────────────────────
   const loadMembers = useCallback(async () => {
     if (!workspaceId || !token) return;
     try {
@@ -77,14 +74,13 @@ export default function TaskView({ workspaceId }) {
     } catch (e) {
       console.error("loadMembers:", e);
     }
-  }, [workspaceId, token]);
+  }, [workspaceId, token, headers]);
 
   useEffect(() => {
     loadTasks();
     loadMembers();
   }, [loadTasks, loadMembers]);
 
-  // ── Create task ──────────────────────────
   const handleCreate = async () => {
     setError("");
     if (!form.title.trim()) { setError("Title is required"); return; }
@@ -107,7 +103,6 @@ export default function TaskView({ workspaceId }) {
     }
   };
 
-  // ── Update status ────────────────────────
   const handleStatusChange = async (task, newStatus) => {
     try {
       const r = await fetch(`http://localhost:5000/api/tasks/${task._id}/status`, {
@@ -123,7 +118,6 @@ export default function TaskView({ workspaceId }) {
     }
   };
 
-  // ── Delete task ──────────────────────────
   const handleDelete = async (taskId) => {
     try {
       const r = await fetch(`http://localhost:5000/api/tasks/${taskId}`, {
@@ -137,11 +131,9 @@ export default function TaskView({ workspaceId }) {
     }
   };
 
-  // ── Filter + Sort logic ──────────────────
   const filteredTasks = useMemo(() => {
     let result = [...tasks];
 
-    // Search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter((t) =>
@@ -151,35 +143,25 @@ export default function TaskView({ workspaceId }) {
       );
     }
 
-    // Filter by member
     if (filterMember !== "all") {
-      result = result.filter(
-        (t) => t.assignedToUsername === filterMember
-      );
+      result = result.filter((t) => t.assignedToUsername === filterMember);
     }
 
-    // Filter by priority
     if (filterPriority !== "all") {
       result = result.filter((t) => t.priority === filterPriority);
     }
 
-    // Sort
     result.sort((a, b) => {
-      if (sortBy === "newest")
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      if (sortBy === "oldest")
-        return new Date(a.createdAt) - new Date(b.createdAt);
-      if (sortBy === "priority")
-        return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
-      if (sortBy === "assignee")
-        return a.assignedToUsername.localeCompare(b.assignedToUsername);
+      if (sortBy === "newest")   return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortBy === "oldest")   return new Date(a.createdAt) - new Date(b.createdAt);
+      if (sortBy === "priority") return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+      if (sortBy === "assignee") return a.assignedToUsername.localeCompare(b.assignedToUsername);
       return 0;
     });
 
     return result;
   }, [tasks, searchQuery, filterMember, filterPriority, sortBy]);
 
-  // ── Group filtered tasks by status ───────
   const grouped = useMemo(() =>
     STATUSES.reduce((acc, s) => {
       acc[s] = filteredTasks.filter((t) => t.status === s);
@@ -190,7 +172,6 @@ export default function TaskView({ workspaceId }) {
   const isCreator = (task) =>
     task.assignedBy?.toString() === user?._id?.toString();
 
-  // ── My tasks count ───────────────────────
   const myTasksCount = tasks.filter(
     (t) => t.assignedToUsername === user?.username
   ).length;
@@ -209,8 +190,6 @@ export default function TaskView({ workspaceId }) {
 
   return (
     <div className="task-container">
-
-      {/* ── LEFT: Create Form ── */}
       <div className="task-sidebar">
         <div className="task-sidebar-header">
           <h3>New Task</h3>
@@ -280,7 +259,6 @@ export default function TaskView({ workspaceId }) {
           </button>
         </div>
 
-        {/* ── Quick Stats ── */}
         <div className="task-stats">
           <div className="task-stats-header">Overview</div>
           <div className="task-stat-row">
@@ -312,10 +290,7 @@ export default function TaskView({ workspaceId }) {
         </div>
       </div>
 
-      {/* ── RIGHT: Board ── */}
       <div className="task-board">
-
-        {/* Board header with filters */}
         <div className="task-board-header">
           <div className="task-board-title-row">
             <h3>Task Board</h3>
@@ -324,10 +299,7 @@ export default function TaskView({ workspaceId }) {
             </span>
           </div>
 
-          {/* ── Filter + Sort Bar ── */}
           <div className="task-filter-bar">
-
-            {/* Search */}
             <div className="task-search-wrap">
               <span className="task-search-icon">🔍</span>
               <input
@@ -344,7 +316,6 @@ export default function TaskView({ workspaceId }) {
               )}
             </div>
 
-            {/* Filter by member */}
             <select
               className="task-filter-select"
               value={filterMember}
@@ -353,12 +324,13 @@ export default function TaskView({ workspaceId }) {
               <option value="all">All Members</option>
               {members.map((m) => (
                 <option key={m._id} value={m.username}>
-                  {m.username === user?.username ? `${m.username} (me)` : m.username}
+                  {m.username === user?.username
+                    ? `${m.username} (me)`
+                    : m.username}
                 </option>
               ))}
             </select>
 
-            {/* Filter by priority */}
             <select
               className="task-filter-select"
               value={filterPriority}
@@ -370,7 +342,6 @@ export default function TaskView({ workspaceId }) {
               <option value="low">🟢 Low</option>
             </select>
 
-            {/* Sort */}
             <select
               className="task-filter-select"
               value={sortBy}
@@ -382,18 +353,18 @@ export default function TaskView({ workspaceId }) {
               <option value="assignee">👤 Assignee</option>
             </select>
 
-            {/* Clear filters */}
             {activeFilters > 0 && (
               <button className="task-clear-btn" onClick={clearFilters}>
-                Clear {activeFilters > 0 ? `(${activeFilters})` : ""}
+                Clear ({activeFilters})
               </button>
             )}
           </div>
 
-          {/* ── My Tasks quick filter ── */}
           <div className="task-quick-filters">
             <button
-              className={`task-quick-btn ${filterMember === user?.username ? "active" : ""}`}
+              className={`task-quick-btn ${
+                filterMember === user?.username ? "active" : ""
+              }`}
               onClick={() =>
                 setFilterMember(
                   filterMember === user?.username ? "all" : user?.username
@@ -403,7 +374,9 @@ export default function TaskView({ workspaceId }) {
               👤 My Tasks ({myTasksCount})
             </button>
             <button
-              className={`task-quick-btn ${filterPriority === "high" ? "active" : ""}`}
+              className={`task-quick-btn ${
+                filterPriority === "high" ? "active" : ""
+              }`}
               onClick={() =>
                 setFilterPriority(filterPriority === "high" ? "all" : "high")
               }
@@ -413,8 +386,12 @@ export default function TaskView({ workspaceId }) {
               )
             </button>
             <button
-              className={`task-quick-btn ${sortBy === "priority" ? "active" : ""}`}
-              onClick={() => setSortBy(sortBy === "priority" ? "newest" : "priority")}
+              className={`task-quick-btn ${
+                sortBy === "priority" ? "active" : ""
+              }`}
+              onClick={() =>
+                setSortBy(sortBy === "priority" ? "newest" : "priority")
+              }
             >
               ⚡ Sort by Priority
             </button>
@@ -466,7 +443,8 @@ export default function TaskView({ workspaceId }) {
                         <span
                           className={`task-assignee ${
                             task.assignedToUsername === user?.username
-                              ? "task-assignee-me" : ""
+                              ? "task-assignee-me"
+                              : ""
                           }`}
                         >
                           👤 {task.assignedToUsername}

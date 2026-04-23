@@ -30,8 +30,8 @@ function WorkspaceHome() {
   const [openFiles,    setOpenFiles]    = useState([]);
   const [activeView,   setActiveView]   = useState("explorer");
   const [showTerminal, setShowTerminal] = useState(true);
-  const [treeLoading,  setTreeLoading]  = useState(false);
-  const [selectedDir,  setSelectedDir]  = useState(null);
+  const [,  setTreeLoading]  = useState(false);
+  const [,  setSelectedDir]  = useState(null);
   const [sidebarOpen,  setSidebarOpen]  = useState(true); // ✅ sidebar toggle
   const [dbWorkspace,  setDbWorkspace]  = useState(null);
   const [contextMenu,  setContextMenu]  = useState({
