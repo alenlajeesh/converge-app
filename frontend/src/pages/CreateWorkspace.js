@@ -12,7 +12,7 @@ function CreateWorkspace({ mode = "create" }) {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
   const [status,   setStatus]   = useState("");
-
+  const apiUrl = process.env.REACT_APP_API_URL;
   const { user, token } = useAuth();
   const navigate = useNavigate();
 
@@ -39,7 +39,7 @@ function CreateWorkspace({ mode = "create" }) {
       if (mode === "join") {
         setStatus("Joining workspace...");
 
-        const res = await fetch("http://localhost:5000/api/workspace/join", {
+        const res = await fetch(`${apiUrl}/api/workspace/join`, {
           method:  "POST",
           headers: {
             "Content-Type": "application/json",
@@ -58,7 +58,7 @@ function CreateWorkspace({ mode = "create" }) {
       } else {
         setStatus("Creating workspace...");
 
-        const res = await fetch("http://localhost:5000/api/workspace/create", {
+        const res = await fetch(`${apiUrl}/workspace/create`, {
           method:  "POST",
           headers: {
             "Content-Type": "application/json",

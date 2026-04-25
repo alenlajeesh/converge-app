@@ -33,7 +33,7 @@ export default function TaskView({ workspaceId }) {
   const [loading,  setLoading]  = useState(false);
   const [creating, setCreating] = useState(false);
   const [error,    setError]    = useState("");
-
+  const apiUrl = process.env.REACT_APP_API_URL;
   const [filterMember,   setFilterMember]   = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
   const [sortBy,         setSortBy]         = useState("newest");
@@ -55,7 +55,7 @@ export default function TaskView({ workspaceId }) {
     if (!workspaceId || !token) return;
     setLoading(true);
     try {
-      const r    = await fetch(`http://localhost:5000/api/tasks/${workspaceId}`, { headers });
+      const r    = await fetch(`${apiUrl}/api/tasks/${workspaceId}`, { headers });
       const data = await r.json();
       setTasks(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -68,7 +68,7 @@ export default function TaskView({ workspaceId }) {
   const loadMembers = useCallback(async () => {
     if (!workspaceId || !token) return;
     try {
-      const r    = await fetch(`http://localhost:5000/api/tasks/${workspaceId}/members`, { headers });
+      const r    = await fetch(`${apiUrl}/api/tasks/${workspaceId}/members`, { headers });
       const data = await r.json();
       setMembers(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -87,7 +87,7 @@ export default function TaskView({ workspaceId }) {
 
     setCreating(true);
     try {
-      const r = await fetch("http://localhost:5000/api/tasks", {
+      const r = await fetch(`${apiUrl}/api/tasks`, {
         method:  "POST",
         headers,
         body:    JSON.stringify({ ...form, workspaceId })
@@ -105,7 +105,7 @@ export default function TaskView({ workspaceId }) {
 
   const handleStatusChange = async (task, newStatus) => {
     try {
-      const r = await fetch(`http://localhost:5000/api/tasks/${task._id}/status`, {
+      const r = await fetch(`${apiUrl}/api/tasks/${task._id}/status`, {
         method:  "PATCH",
         headers,
         body:    JSON.stringify({ status: newStatus })
@@ -120,7 +120,7 @@ export default function TaskView({ workspaceId }) {
 
   const handleDelete = async (taskId) => {
     try {
-      const r = await fetch(`http://localhost:5000/api/tasks/${taskId}`, {
+      const r = await fetch(`${apiUrl}/api/tasks/${taskId}`, {
         method: "DELETE",
         headers
       });

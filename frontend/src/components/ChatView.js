@@ -9,7 +9,7 @@ export default function ChatView({ workspaceId }) {
   const [messages,  setMessages]  = useState([]);
   const [connected, setConnected] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
-
+  const apiUrl = process.env.REACT_APP_API_URL;
   const socketRef = useRef(null);
   const bottomRef = useRef(null);
   const joinedRef = useRef(null);
@@ -18,7 +18,7 @@ export default function ChatView({ workspaceId }) {
   useEffect(() => {
     if (!token) return;
 
-    const socket = io("http://localhost:5000", {
+    const socket = io(`${apiUrl}`, {
       auth:              { token },
       reconnection:      true,
       reconnectionDelay: 1000,
@@ -71,7 +71,7 @@ export default function ChatView({ workspaceId }) {
   useEffect(() => {
     if (!workspaceId || !token) return;
 
-    fetch(`http://localhost:5000/api/chat/${workspaceId}`, {
+    fetch(`${apiUrl}/api/chat/${workspaceId}`, {
       headers: { Authorization: "Bearer " + token }
     })
       .then((r) => r.json())
