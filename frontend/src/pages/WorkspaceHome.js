@@ -14,10 +14,10 @@ import VideoView         from "../components/VideoView";
 import TaskView          from "../components/TaskView";
 import CallNotification  from "../components/CallNotification";
 
-const apiUrl = process.env.REACT_APP_API_URL;
 import * as api from "../api";
 import "../styles/workspace.css";
 
+const apiUrl = process.env.REACT_APP_API_URL;
 function WorkspaceHome() {
   const { state }  = useLocation();
   const { id }     = useParams();
