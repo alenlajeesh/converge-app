@@ -92,7 +92,7 @@ export default function ChatView({ workspaceId }) {
       message: message.trim()
     });
     setMessage("");
-  }, [message, workspaceId]);
+  }, [message, workspaceId,apiUrl]);
 
   // Delete
   const deleteMessage = useCallback((msg) => {
