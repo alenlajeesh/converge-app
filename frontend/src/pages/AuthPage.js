@@ -6,7 +6,7 @@ import "../styles/auth.css";
 function AuthPage() {
   const { login } = useAuth();
   const navigate  = useNavigate();
-
+  const apiUrl = process.env.REACT_APP_API_URL;
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
@@ -34,8 +34,8 @@ function AuthPage() {
     setLoading(true);
     try {
       const url  = isLogin
-        ? "http://localhost:5000/api/auth/login"
-        : "http://localhost:5000/api/auth/register";
+        ? `${apiUrl}/api/auth/login`
+        : `${apiUrl}/api/auth/register`;
 
       const body = isLogin
         ? { email: form.email, password: form.password }

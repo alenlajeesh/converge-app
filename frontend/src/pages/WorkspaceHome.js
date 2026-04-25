@@ -22,7 +22,7 @@ function WorkspaceHome() {
   const { id }     = useParams();
   const navigate   = useNavigate();
   const { token, user } = useAuth();
-
+  const apiUrl = process.env.REACT_APP_API_URL;
   const workspaceId = id;
   const rootPath    = state?.repoPath || state?.path;
 
@@ -54,7 +54,7 @@ function WorkspaceHome() {
   // ── Fetch workspace from DB ──────────────
   useEffect(() => {
     if (!workspaceId || !token) return;
-    fetch(`http://localhost:5000/api/workspace/${workspaceId}`, {
+    fetch(`${apiUrl}/api/workspace/${workspaceId}`, {
       headers: { Authorization: "Bearer " + token }
     })
       .then((r) => r.json())
@@ -73,7 +73,7 @@ function WorkspaceHome() {
   useEffect(() => {
     if (!token || !workspaceId) return;
 
-    const socket = io("http://localhost:5000", {
+    const socket = io(`${apiUrl}`, {
       auth: { token }
     });
 

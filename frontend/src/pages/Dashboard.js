@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "../styles/dashboard.css";
 import * as api from "../api";
-
 function Dashboard() {
+  const apiUrl = process.env.REACT_APP_API_URL;
   const navigate = useNavigate();
   const { user, token, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState([]);
@@ -27,7 +27,7 @@ function Dashboard() {
 
       // ✅ Pass workspaceId if stored locally so linkWorkspace
       // fetches the exact document instead of searching by localPath
-      const linkRes = await fetch("http://localhost:5000/api/workspace/link", {
+      const linkRes = await fetch(`${apiUrl}/api/workspace/link`, {
         method:  "POST",
         headers: {
           "Content-Type": "application/json",
@@ -71,7 +71,7 @@ function Dashboard() {
         return;
       }
 
-      const linkRes = await fetch("http://localhost:5000/api/workspace/link", {
+      const linkRes = await fetch(`${apiUrl}/api/workspace/link`, {
         method:  "POST",
         headers: {
           "Content-Type": "application/json",
