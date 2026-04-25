@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
-
+const apiUrl = process.env.REACT_APP_API_URL;
 export default function ChatView({ workspaceId }) {
   const { user, token } = useAuth();
 
@@ -9,7 +9,7 @@ export default function ChatView({ workspaceId }) {
   const [messages,  setMessages]  = useState([]);
   const [connected, setConnected] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
-  const apiUrl = process.env.REACT_APP_API_URL;
+  
   const socketRef = useRef(null);
   const bottomRef = useRef(null);
   const joinedRef = useRef(null);
