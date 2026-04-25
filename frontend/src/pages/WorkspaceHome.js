@@ -14,6 +14,7 @@ import VideoView         from "../components/VideoView";
 import TaskView          from "../components/TaskView";
 import CallNotification  from "../components/CallNotification";
 
+const apiUrl = process.env.REACT_APP_API_URL;
 import * as api from "../api";
 import "../styles/workspace.css";
 
@@ -22,7 +23,7 @@ function WorkspaceHome() {
   const { id }     = useParams();
   const navigate   = useNavigate();
   const { token, user } = useAuth();
-  const apiUrl = process.env.REACT_APP_API_URL;
+  
   const workspaceId = id;
   const rootPath    = state?.repoPath || state?.path;
 
