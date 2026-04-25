@@ -21,12 +21,13 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "dangerousDisableAssetCspModification": true
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "rpm"],
     "icon": [
       "icons/icon.png",
       "icons/icon.ico",
@@ -37,8 +38,7 @@
         "installMode": "currentUser",
         "languages": ["English"],
         "displayLanguageSelector": false
-      },
-      "wix": null
+      }
     }
   }
 }

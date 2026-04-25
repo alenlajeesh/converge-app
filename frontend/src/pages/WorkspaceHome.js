@@ -1,16 +1,19 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { io } from "socket.io-client";
 
-import ActivityBar  from "../components/ActivityBar";
-import Sidebar      from "../components/Sidebar";
-import Editor       from "../components/Editor";
-import ContextMenu  from "../components/ContextMenu";
-import Terminal     from "../components/Terminal";
-import ChatView     from "../components/ChatView";
-import CallView     from "../components/CallView";
-import VideoView    from "../components/VideoView";
-import TaskView from "../components/TaskView";
+import ActivityBar       from "../components/ActivityBar";
+import Sidebar           from "../components/Sidebar";
+import Editor            from "../components/Editor";
+import ContextMenu       from "../components/ContextMenu";
+import Terminal          from "../components/Terminal";
+import ChatView          from "../components/ChatView";
+import CallView          from "../components/CallView";
+import VideoView         from "../components/VideoView";
+import TaskView          from "../components/TaskView";
+import CallNotification  from "../components/CallNotification";
+
 import * as api from "../api";
 import "../styles/workspace.css";
 
@@ -18,27 +21,37 @@ function WorkspaceHome() {
   const { state }  = useLocation();
   const { id }     = useParams();
   const navigate   = useNavigate();
-  const { token }  = useAuth();
+  const { token, user } = useAuth();
 
   const workspaceId = id;
   const rootPath    = state?.repoPath || state?.path;
 
+  // ── File tree ────────────────────────────
   const [tree,         setTree]         = useState([]);
   const [expanded,     setExpanded]     = useState({});
   const [selectedFile, setSelectedFile] = useState(null);
   const [content,      setContent]      = useState("");
   const [openFiles,    setOpenFiles]    = useState([]);
+
+  // ── UI state ─────────────────────────────
   const [activeView,   setActiveView]   = useState("explorer");
   const [showTerminal, setShowTerminal] = useState(true);
-  const [,  setTreeLoading]  = useState(false);
-  const [,  setSelectedDir]  = useState(null);
-  const [sidebarOpen,  setSidebarOpen]  = useState(true); // ✅ sidebar toggle
+  const [sidebarOpen,  setSidebarOpen]  = useState(true);
   const [dbWorkspace,  setDbWorkspace]  = useState(null);
   const [contextMenu,  setContextMenu]  = useState({
     visible: false, x: 0, y: 0, node: null
   });
 
-  // ✅ Fetch fresh workspace from DB for joinCode
+  // ── Call state ───────────────────────────
+  const socketRef   = useRef(null);
+  const [callNotif, setCallNotif] = useState(null);
+  // callNotif = { participants, workspaceId, callType } | null
+
+  // ── Unused but needed for setters ───────
+  const [, setTreeLoading] = useState(false); // eslint-disable-line no-unused-vars
+  const [, setSelectedDir] = useState(null);  // eslint-disable-line no-unused-vars
+
+  // ── Fetch workspace from DB ──────────────
   useEffect(() => {
     if (!workspaceId || !token) return;
     fetch(`http://localhost:5000/api/workspace/${workspaceId}`, {
@@ -51,10 +64,51 @@ function WorkspaceHome() {
 
   const joinCode = dbWorkspace?.joinCode || state?.joinCode;
 
+  // ── Redirect if no rootPath ──────────────
   useEffect(() => {
     if (!rootPath) navigate("/", { replace: true });
   }, [rootPath, navigate]);
 
+  // ── Workspace socket for call notifications
+  useEffect(() => {
+    if (!token || !workspaceId) return;
+
+    const socket = io("http://localhost:5000", {
+      auth: { token }
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      socket.emit("join-workspace", { workspaceId });
+    });
+
+    // Show notification when a call becomes active
+    socket.on("call-active", ({ participants, workspaceId: wid }) => {
+      if (!participants || participants.length === 0) return;
+
+      // Don't show notification if already in call view
+      setActiveView((current) => {
+        if (current === "call" || current === "video") return current;
+
+        const callType = participants[0]?.callType || "audio";
+        setCallNotif({ participants, workspaceId: wid, callType });
+        return current;
+      });
+    });
+
+    // Hide notification when call ends
+    socket.on("call-ended", () => {
+      setCallNotif(null);
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [token, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── File tree ────────────────────────────
   const buildTree = useCallback(async (dirPath) => {
     try {
       const items = await api.readDir(dirPath);
@@ -159,6 +213,7 @@ function WorkspaceHome() {
     });
   }, [selectedFile]);
 
+  // ── Context menu actions ─────────────────
   const handleContextAction = async (action, node) => {
     if (!node) return;
     const sep       = node.path.includes("/") ? "/" : "\\";
@@ -236,6 +291,7 @@ function WorkspaceHome() {
 
   return (
     <div className="workspace">
+
       {/* ACTIVITY BAR */}
       <ActivityBar
         active={activeView}
@@ -244,7 +300,7 @@ function WorkspaceHome() {
         setSidebarOpen={setSidebarOpen}
       />
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR — always visible */}
       <Sidebar
         tree={tree}
         expanded={expanded}
@@ -255,8 +311,10 @@ function WorkspaceHome() {
         open={sidebarOpen}
       />
 
-      {/* MAIN */}
+      {/* MAIN AREA */}
       <div className="main-area">
+
+        {/* TOPBAR */}
         <div className="topbar">
           <div className="topbar-left">
             <span className="workspace-name">{workspaceName}</span>
@@ -267,6 +325,7 @@ function WorkspaceHome() {
               </div>
             )}
           </div>
+
           <div className="topbar-actions">
             <button
               className={`topbar-btn ${showTerminal ? "active" : ""}`}
@@ -280,6 +339,7 @@ function WorkspaceHome() {
           </div>
         </div>
 
+        {/* CONTENT AREA */}
         <div className="editor-area">
           {activeView === "explorer" && (
             <Editor
@@ -291,12 +351,35 @@ function WorkspaceHome() {
               closeFile={closeFile}
             />
           )}
-          {activeView === "chat"  && <ChatView workspaceId={workspaceId} />}
-		  {activeView === "tasks" && <TaskView workspaceId={workspaceId} />}
-          {activeView === "call"  && <CallView />}
-          {activeView === "video" && <VideoView />}
+
+          {activeView === "chat" && (
+            <ChatView workspaceId={workspaceId} />
+          )}
+
+          {activeView === "tasks" && (
+            <TaskView workspaceId={workspaceId} />
+          )}
+
+          {/* ✅ Pass socket, workspaceId, user to CallView */}
+          {activeView === "call" && (
+            <CallView
+              socket={socketRef.current}
+              workspaceId={workspaceId}
+              user={user}
+            />
+          )}
+
+          {/* ✅ Pass socket, workspaceId, user to VideoView */}
+          {activeView === "video" && (
+            <VideoView
+              socket={socketRef.current}
+              workspaceId={workspaceId}
+              user={user}
+            />
+          )}
         </div>
 
+        {/* TERMINAL */}
         {showTerminal && (
           <Terminal
             rootPath={rootPath}
@@ -305,6 +388,7 @@ function WorkspaceHome() {
         )}
       </div>
 
+      {/* CONTEXT MENU */}
       <ContextMenu
         x={contextMenu.x}
         y={contextMenu.y}
@@ -315,6 +399,22 @@ function WorkspaceHome() {
         onRename={handleRename}
         onDelete={handleDelete}
       />
+
+      {/* ✅ CALL NOTIFICATION TOAST */}
+      {callNotif && (
+        <CallNotification
+          participants={callNotif.participants}
+          workspaceId={callNotif.workspaceId}
+          callType={callNotif.callType}
+          onJoin={() => {
+            const view = callNotif.callType === "video" ? "video" : "call";
+            setActiveView(view);
+            setSidebarOpen(false);
+            setCallNotif(null);
+          }}
+          onDismiss={() => setCallNotif(null)}
+        />
+      )}
     </div>
   );
 }
