@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "../styles/createWorkspace.css";
 import * as api from "../api";
+const apiUrl = process.env.REACT_APP_API_URL;
 
 function CreateWorkspace({ mode = "create" }) {
   const [name,     setName]     = useState("");
@@ -12,10 +13,8 @@ function CreateWorkspace({ mode = "create" }) {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
   const [status,   setStatus]   = useState("");
-  const apiUrl = process.env.REACT_APP_API_URL;
   const { user, token } = useAuth();
   const navigate = useNavigate();
-
   const selectFolder = async () => {
     const path = await api.selectFolder();
     if (path) setLocation(path);
@@ -58,7 +57,7 @@ function CreateWorkspace({ mode = "create" }) {
       } else {
         setStatus("Creating workspace...");
 
-        const res = await fetch(`${apiUrl}/workspace/create`, {
+        const res = await fetch(`${apiUrl}/api/workspace/create`, {
           method:  "POST",
           headers: {
             "Content-Type": "application/json",
@@ -79,7 +78,8 @@ function CreateWorkspace({ mode = "create" }) {
       }
 
       const repoUrl = onlineWorkspace.repoUrl || null;
-
+	console.log("Location:", location);
+console.log("Repo URL:", repoUrl);
       setStatus(
         repoUrl
           ? "Cloning repository... this may take a moment"
