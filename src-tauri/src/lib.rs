@@ -172,6 +172,7 @@ async fn create_workspace(
             let output = Command::new("git")
                 .args(["clone", url])
                 .current_dir(&workspace_path)
+                .env_remove("LD_LIBRARY_PATH") 
                 .output();
 
             match output {
