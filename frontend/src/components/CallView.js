@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useSpeakingDetection } from "../hooks/useSpeakingDetection";
 import "../styles/callview.css";
 
 export default function CallView({ socket, workspaceId, user }) {
@@ -12,6 +13,9 @@ export default function CallView({ socket, workspaceId, user }) {
   const peersRef       = useRef({});
   const audioRefs      = useRef({});
 
+  // 🎙️ speaking indicator
+  const { speakingMap, startMonitor, stopMonitor, stopAll } = useSpeakingDetection(18);
+
   const cleanupPeer = useCallback((socketId) => {
     if (peersRef.current[socketId]) {
       peersRef.current[socketId].destroy();
@@ -21,7 +25,8 @@ export default function CallView({ socket, workspaceId, user }) {
       audioRefs.current[socketId].srcObject = null;
       delete audioRefs.current[socketId];
     }
-  }, []);
+    stopMonitor(socketId);
+  }, [stopMonitor]);
 
   const createPeer = useCallback((targetSocketId, initiator, stream) => {
     const SimplePeer = require("simple-peer");
@@ -56,6 +61,7 @@ export default function CallView({ socket, workspaceId, user }) {
       }
       audio.srcObject = remoteStream;
       audio.play().catch(console.error);
+      startMonitor(targetSocketId, remoteStream);
     });
 
     peer.on("error", (e) => console.error("Peer error:", e));
@@ -63,7 +69,7 @@ export default function CallView({ socket, workspaceId, user }) {
 
     peersRef.current[targetSocketId] = peer;
     return peer;
-  }, [socket, cleanupPeer]);
+  }, [socket, cleanupPeer, startMonitor]);
 
   useEffect(() => {
     if (!socket) return;
@@ -165,6 +171,7 @@ export default function CallView({ socket, workspaceId, user }) {
 
       console.log("✅ Got audio stream:", stream.getTracks());
       localStreamRef.current = stream;
+      startMonitor("self", stream);
       setInCall(true);
       setConnecting(false);
       socket.emit("call-join", { workspaceId, callType: "audio" });
@@ -195,11 +202,12 @@ export default function CallView({ socket, workspaceId, user }) {
     }
     Object.keys(peersRef.current).forEach(cleanupPeer);
     peersRef.current = {};
+    stopAll();
     setInCall(false);
     setParticipants([]);
     setMuted(false);
     if (notify && socket) socket.emit("call-leave", { workspaceId });
-  }, [socket, workspaceId, cleanupPeer]);
+  }, [socket, workspaceId, cleanupPeer, stopAll]);
 
   const toggleMute = () => {
     if (!localStreamRef.current) return;
@@ -208,6 +216,8 @@ export default function CallView({ socket, workspaceId, user }) {
   };
 
   useEffect(() => { return () => leaveCall(true); }, [leaveCall]);
+
+  const selfSpeaking = !!speakingMap.self && !muted;
 
   return (
     <div className="call-container">
@@ -246,7 +256,7 @@ export default function CallView({ socket, workspaceId, user }) {
           <>
             <div className="call-participants">
               <div className="call-participant self">
-                <div className={`call-avatar ${muted ? "muted" : "active"}`}>
+                <div className={`call-avatar ${muted ? "muted" : "active"} ${selfSpeaking ? "speaking" : ""}`}>
                   {user?.username?.[0]?.toUpperCase()}
                 </div>
                 <span className="call-participant-name">
@@ -257,15 +267,18 @@ export default function CallView({ socket, workspaceId, user }) {
                 </span>
               </div>
 
-              {participants.map((p) => (
-                <div key={p.socketId} className="call-participant">
-                  <div className="call-avatar active">
-                    {p.username?.[0]?.toUpperCase()}
+              {participants.map((p) => {
+                const isSpeaking = !!speakingMap[p.socketId];
+                return (
+                  <div key={p.socketId} className="call-participant">
+                    <div className={`call-avatar active ${isSpeaking ? "speaking" : ""}`}>
+                      {p.username?.[0]?.toUpperCase()}
+                    </div>
+                    <span className="call-participant-name">{p.username}</span>
+                    <span className="call-participant-status">🎙️</span>
                   </div>
-                  <span className="call-participant-name">{p.username}</span>
-                  <span className="call-participant-status">🎙️</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="call-controls">

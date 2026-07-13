@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useSpeakingDetection } from "../hooks/useSpeakingDetection";
 import "../styles/callview.css";
 
 export default function VideoView({ socket, workspaceId, user }) {
@@ -14,13 +15,17 @@ export default function VideoView({ socket, workspaceId, user }) {
   const peersRef       = useRef({});
   const videoRefs      = useRef({});
 
+  // 🎙️ speaking indicator
+  const { speakingMap, startMonitor, stopMonitor, stopAll } = useSpeakingDetection(18);
+
   const cleanupPeer = useCallback((socketId) => {
     if (peersRef.current[socketId]) {
       peersRef.current[socketId].destroy();
       delete peersRef.current[socketId];
     }
     delete videoRefs.current[socketId];
-  }, []);
+    stopMonitor(socketId);
+  }, [stopMonitor]);
 
   const createPeer = useCallback((targetSocketId, initiator, stream) => {
     const SimplePeer = require("simple-peer");
@@ -53,6 +58,7 @@ export default function VideoView({ socket, workspaceId, user }) {
           p.socketId === targetSocketId ? { ...p, stream: remoteStream } : p
         )
       );
+      startMonitor(targetSocketId, remoteStream);
     });
 
     peer.on("error", (e) => console.error("Peer error:", e));
@@ -60,7 +66,7 @@ export default function VideoView({ socket, workspaceId, user }) {
 
     peersRef.current[targetSocketId] = peer;
     return peer;
-  }, [socket, cleanupPeer]);
+  }, [socket, cleanupPeer, startMonitor]);
 
   useEffect(() => {
     if (!socket) return;
@@ -133,6 +139,7 @@ export default function VideoView({ socket, workspaceId, user }) {
     };
   }, [socket, createPeer, cleanupPeer]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Attach remote participant streams once their <video> tiles exist
   useEffect(() => {
     participants.forEach((p) => {
       if (p.stream && videoRefs.current[p.socketId]) {
@@ -140,6 +147,14 @@ export default function VideoView({ socket, workspaceId, user }) {
       }
     });
   }, [participants]);
+
+  // Attach the LOCAL stream only after the <video> element has actually
+  // mounted (i.e. after inCall becomes true and the call body re-renders).
+  useEffect(() => {
+    if (inCall && localVideoRef.current && localStreamRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
+  }, [inCall]);
 
   const joinCall = async () => {
     setError("");
@@ -195,10 +210,7 @@ export default function VideoView({ socket, workspaceId, user }) {
 
       console.log("✅ Got stream:", stream.getTracks());
       localStreamRef.current = stream;
-
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
+      startMonitor("self", stream);
 
       setInCall(true);
       setConnecting(false);
@@ -222,6 +234,7 @@ export default function VideoView({ socket, workspaceId, user }) {
             video: false
           });
           localStreamRef.current = stream;
+          startMonitor("self", stream);
           setInCall(true);
           setError("Joined with audio only.");
           socket.emit("call-join", { workspaceId, callType: "audio" });
@@ -244,12 +257,13 @@ export default function VideoView({ socket, workspaceId, user }) {
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     Object.keys(peersRef.current).forEach(cleanupPeer);
     peersRef.current = {};
+    stopAll();
     setInCall(false);
     setParticipants([]);
     setMuted(false);
     setVideoOff(false);
     if (notify && socket) socket.emit("call-leave", { workspaceId });
-  }, [socket, workspaceId, cleanupPeer]);
+  }, [socket, workspaceId, cleanupPeer, stopAll]);
 
   const toggleMute = () => {
     if (!localStreamRef.current) return;
@@ -264,6 +278,8 @@ export default function VideoView({ socket, workspaceId, user }) {
   };
 
   useEffect(() => { return () => leaveCall(true); }, [leaveCall]);
+
+  const selfSpeaking = !!speakingMap.self && !muted;
 
   return (
     <div className="call-container">
@@ -301,7 +317,7 @@ export default function VideoView({ socket, workspaceId, user }) {
         ) : (
           <>
             <div className={`video-grid participants-${participants.length + 1}`}>
-              <div className="video-tile self">
+              <div className={`video-tile self ${selfSpeaking ? "speaking" : ""}`}>
                 <video
                   ref={localVideoRef}
                   autoPlay
@@ -319,27 +335,33 @@ export default function VideoView({ socket, workspaceId, user }) {
                 </div>
               </div>
 
-              {participants.map((p) => (
-                <div key={p.socketId} className="video-tile">
-                  {p.stream ? (
-                    <video
-                      ref={(el) => {
-                        if (el) {
-                          videoRefs.current[p.socketId] = el;
-                          if (p.stream) el.srcObject = p.stream;
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                    />
-                  ) : (
-                    <div className="video-avatar">
-                      {p.username?.[0]?.toUpperCase()}
-                    </div>
-                  )}
-                  <div className="video-tile-name">{p.username}</div>
-                </div>
-              ))}
+              {participants.map((p) => {
+                const isSpeaking = !!speakingMap[p.socketId];
+                return (
+                  <div
+                    key={p.socketId}
+                    className={`video-tile ${isSpeaking ? "speaking" : ""}`}
+                  >
+                    {p.stream ? (
+                      <video
+                        ref={(el) => {
+                          if (el) {
+                            videoRefs.current[p.socketId] = el;
+                            if (p.stream) el.srcObject = p.stream;
+                          }
+                        }}
+                        autoPlay
+                        playsInline
+                      />
+                    ) : (
+                      <div className="video-avatar">
+                        {p.username?.[0]?.toUpperCase()}
+                      </div>
+                    )}
+                    <div className="video-tile-name">{p.username}</div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="call-controls">
