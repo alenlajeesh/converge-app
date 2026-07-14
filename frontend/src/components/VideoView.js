@@ -14,6 +14,11 @@ export default function VideoView({ socket, workspaceId, user }) {
   const localVideoRef  = useRef(null);
   const peersRef       = useRef({});
   const videoRefs      = useRef({});
+  // Stable ref-callback cache — prevents React from treating the ref as
+  // "new" on every re-render (e.g. every time the speaking indicator
+  // toggles), which was causing repeated srcObject reassignment and
+  // visible video/audio flicker.
+  const videoRefCallbacksRef = useRef({});
   // ICE candidates that arrive before the peer object exists yet
   // (e.g. a candidate lands before its matching offer has been
   // processed) used to be silently dropped. We queue and flush them.
@@ -28,6 +33,7 @@ export default function VideoView({ socket, workspaceId, user }) {
       delete peersRef.current[socketId];
     }
     delete videoRefs.current[socketId];
+    delete videoRefCallbacksRef.current[socketId];
     delete pendingCandidatesRef.current[socketId];
     stopMonitor(socketId);
   }, [stopMonitor]);
@@ -204,6 +210,23 @@ export default function VideoView({ socket, workspaceId, user }) {
       socket.off("call-ended",               onCallEnded);
     };
   }, [socket, createPeer, cleanupPeer]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Returns the SAME function reference across renders for a given
+  // socketId, so React doesn't detach/reattach the <video> ref (and
+  // therefore doesn't retrigger srcObject assignment) on unrelated
+  // re-renders like speaking-indicator updates.
+  const getVideoRefCallback = useCallback((socketId) => {
+    if (!videoRefCallbacksRef.current[socketId]) {
+      videoRefCallbacksRef.current[socketId] = (el) => {
+        if (el) {
+          videoRefs.current[socketId] = el;
+        } else {
+          delete videoRefs.current[socketId];
+        }
+      };
+    }
+    return videoRefCallbacksRef.current[socketId];
+  }, []);
 
   // Attach remote participant streams once their <video> tiles exist
   useEffect(() => {
@@ -410,12 +433,7 @@ export default function VideoView({ socket, workspaceId, user }) {
                   >
                     {p.stream ? (
                       <video
-                        ref={(el) => {
-                          if (el) {
-                            videoRefs.current[p.socketId] = el;
-                            if (p.stream) el.srcObject = p.stream;
-                          }
-                        }}
+                        ref={getVideoRefCallback(p.socketId)}
                         autoPlay
                         playsInline
                       />

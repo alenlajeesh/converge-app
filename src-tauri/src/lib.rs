@@ -467,6 +467,20 @@ fn run_command(command: String, cwd: String) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // ✅ Fixes video flickering in the installed/compiled app on Windows.
+    // WebView2's GPU-accelerated compositor has a known issue where live
+    // <video> elements fed by WebRTC MediaStreams flicker/tear — this
+    // mostly only shows up in the fully compiled build (not `tauri dev`,
+    // which can behave differently). Must be set before the WebView2
+    // environment is created, so this runs first, before Builder::default().
+    #[cfg(target_os = "windows")]
+    {
+        std::env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--disable-gpu-compositing --disable-features=CalculateNativeWinOcclusion"
+        );
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
