@@ -4,6 +4,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::Manager;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+// Prevents the black cmd.exe console window from flashing on screen
+// every time a command runs on Windows.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 // ─────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────
@@ -410,9 +418,31 @@ fn rename_path(old_path: String, new_path: String) -> OpResult {
     }
 }
 
+// ─────────────────────────────────────────
+// ✅ CROSS-PLATFORM FIX
+// Windows has no /bin/sh, so "sh -c <command>" (the old implementation)
+// silently fails to even launch on Windows — that's why nothing ran,
+// including plain commands like `git --version`.
+// We now pick the right shell per OS:
+//   - Windows -> cmd /C <command>   (built into every Windows install)
+//   - Linux/macOS -> sh -c <command>
+// CREATE_NO_WINDOW stops a black console window from flashing on screen
+// every time a command runs on Windows.
+// ─────────────────────────────────────────
 #[tauri::command]
 fn run_command(command: String, cwd: String) -> String {
     if command.trim().is_empty() { return "Error: No command provided".to_string(); }
+
+    #[cfg(target_os = "windows")]
+    let output = {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", &command]);
+        cmd.current_dir(&cwd);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.output()
+    };
+
+    #[cfg(not(target_os = "windows"))]
     let output = Command::new("sh")
         .arg("-c")
         .arg(&command)
