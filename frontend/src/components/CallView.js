@@ -76,11 +76,17 @@ export default function CallView({ socket, workspaceId, user }) {
 
     const onUserJoined = ({ socketId, username, callType }) => {
       if (!localStreamRef.current) return;
+      // ⚠️ Do NOT create a peer here as initiator. The new joiner already
+      // creates a peer toward us (initiator: true) via
+      // onExistingParticipants. If we also initiate here, both sides
+      // generate competing SDP offers (WebRTC "glare") and the connection
+      // ends up half-broken — sockets connect and you see the tile/name,
+      // but audio never actually negotiates. We just track the
+      // participant and wait for their offer in onOffer below.
       setParticipants((prev) => {
         if (prev.find((p) => p.socketId === socketId)) return prev;
         return [...prev, { socketId, username, callType }];
       });
-      createPeer(socketId, true, localStreamRef.current);
     };
 
     const onExistingParticipants = ({ participants: existing }) => {
