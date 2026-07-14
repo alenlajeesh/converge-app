@@ -14,6 +14,10 @@ export default function VideoView({ socket, workspaceId, user }) {
   const localVideoRef  = useRef(null);
   const peersRef       = useRef({});
   const videoRefs      = useRef({});
+  // ICE candidates that arrive before the peer object exists yet
+  // (e.g. a candidate lands before its matching offer has been
+  // processed) used to be silently dropped. We queue and flush them.
+  const pendingCandidatesRef = useRef({});
 
   // 🎙️ speaking indicator
   const { speakingMap, startMonitor, stopMonitor, stopAll } = useSpeakingDetection(18);
@@ -24,11 +28,14 @@ export default function VideoView({ socket, workspaceId, user }) {
       delete peersRef.current[socketId];
     }
     delete videoRefs.current[socketId];
+    delete pendingCandidatesRef.current[socketId];
     stopMonitor(socketId);
   }, [stopMonitor]);
 
   const createPeer = useCallback((targetSocketId, initiator, stream) => {
     const SimplePeer = require("simple-peer");
+
+    console.log(`🔧 Creating peer -> ${targetSocketId} (initiator: ${initiator}, tracks: ${stream?.getTracks().map(t => t.kind).join(",")})`);
 
     const peer = new SimplePeer({
       initiator,
@@ -38,21 +45,55 @@ export default function VideoView({ socket, workspaceId, user }) {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
+          // ✅ TURN server — required when a direct P2P path can't be
+          // established (symmetric NAT, hotspot NAT without loopback
+          // support, client isolation, etc). STUN alone is not enough
+          // in these cases — this is almost certainly why two laptops
+          // on the same phone hotspot can't see/hear each other.
+          // Sign up free (20GB/mo, no card) at
+          // https://www.metered.ca/tools/openrelay/ and paste the
+          // iceServers snippet from their dashboard here — it will
+          // include entries like:
+          // {
+          //   urls: "turn:global.relay.metered.ca:80",
+          //   username: "YOUR_METERED_USERNAME",
+          //   credential: "YOUR_METERED_CREDENTIAL",
+          // },
         ]
       }
     });
 
     peer.on("signal", (signalData) => {
       if (signalData.type === "offer") {
+        console.log(`📤 Sending OFFER -> ${targetSocketId}`);
         socket.emit("call-offer", { targetSocketId, offer: signalData, callType: "video" });
       } else if (signalData.type === "answer") {
+        console.log(`📤 Sending ANSWER -> ${targetSocketId}`);
         socket.emit("call-answer", { targetSocketId, answer: signalData });
       } else {
         socket.emit("call-ice-candidate", { targetSocketId, candidate: signalData });
       }
     });
 
+    // 🔍 DIAGNOSTIC: tells you definitively whether the two browsers
+    // ever actually established a P2P connection. If this never logs
+    // "connected", ICE failed (almost always means you need a TURN
+    // server — STUN alone can't traverse some NAT/firewall setups).
+    peer.on("connect", () => {
+      console.log(`✅ PEER CONNECTED (data channel open) -> ${targetSocketId}`);
+    });
+
+    if (peer._pc) {
+      peer._pc.oniceconnectionstatechange = () => {
+        console.log(`🧊 ICE state (${targetSocketId}):`, peer._pc.iceConnectionState);
+      };
+      peer._pc.onconnectionstatechange = () => {
+        console.log(`🔗 Connection state (${targetSocketId}):`, peer._pc.connectionState);
+      };
+    }
+
     peer.on("stream", (remoteStream) => {
+      console.log(`🎥 STREAM RECEIVED <- ${targetSocketId}`, remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
       setParticipants((prev) =>
         prev.map((p) =>
           p.socketId === targetSocketId ? { ...p, stream: remoteStream } : p
@@ -61,10 +102,20 @@ export default function VideoView({ socket, workspaceId, user }) {
       startMonitor(targetSocketId, remoteStream);
     });
 
-    peer.on("error", (e) => console.error("Peer error:", e));
-    peer.on("close", () => cleanupPeer(targetSocketId));
+    peer.on("error", (e) => console.error(`❌ Peer error (${targetSocketId}):`, e));
+    peer.on("close", () => {
+      console.log(`📴 Peer closed -> ${targetSocketId}`);
+      cleanupPeer(targetSocketId);
+    });
 
     peersRef.current[targetSocketId] = peer;
+
+    // Flush any ICE candidates that arrived before this peer existed
+    if (pendingCandidatesRef.current[targetSocketId]) {
+      pendingCandidatesRef.current[targetSocketId].forEach((c) => peer.signal(c));
+      delete pendingCandidatesRef.current[targetSocketId];
+    }
+
     return peer;
   }, [socket, cleanupPeer, startMonitor]);
 
@@ -115,7 +166,16 @@ export default function VideoView({ socket, workspaceId, user }) {
 
     const onIceCandidate = ({ fromSocketId, candidate }) => {
       const p = peersRef.current[fromSocketId];
-      if (p) p.signal(candidate);
+      if (p) {
+        p.signal(candidate);
+      } else {
+        // Peer not created yet — queue instead of dropping silently.
+        // createPeer() flushes this once the peer exists.
+        if (!pendingCandidatesRef.current[fromSocketId]) {
+          pendingCandidatesRef.current[fromSocketId] = [];
+        }
+        pendingCandidatesRef.current[fromSocketId].push(candidate);
+      }
     };
 
     const onUserLeft = ({ socketId, username }) => {
