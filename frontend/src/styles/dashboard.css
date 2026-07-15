@@ -1,6 +1,9 @@
 .dashboard {
   position: fixed;
-  inset: 0;
+  top: 30px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: #0f172a;
   display: flex;
   flex-direction: column;

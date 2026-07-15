@@ -4,11 +4,13 @@ import Dashboard       from "./pages/Dashboard";
 import CreateWorkspace from "./pages/CreateWorkspace";
 import WorkspaceHome   from "./pages/WorkspaceHome";
 import AuthPage        from "./pages/AuthPage";
+import MenuBar         from "./components/MenuBar";
 
 function App() {
   return (
     <AuthProvider>
       <Router>
+        <MenuBar />
         <Routes>
           <Route path="/"               element={<Dashboard />} />
           <Route path="/create"         element={<CreateWorkspace mode="create" />} />
