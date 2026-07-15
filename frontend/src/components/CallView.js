@@ -9,14 +9,21 @@ export default function CallView({ socket, workspaceId, user }) {
   const [connecting,   setConnecting]   = useState(false);
   const [error,        setError]        = useState("");
 
+  // 🖥️ screen share state
+  const [screenSharing,       setScreenSharing]       = useState(false);
+  const [screenShareStreams,  setScreenShareStreams]  = useState({}); // { socketId: MediaStream }
+
   const localStreamRef = useRef(null);
   const peersRef       = useRef({});
   const audioRefs      = useRef({});
-  // ICE candidates that arrive before their peer object exists yet
-  // used to be silently dropped. We queue and flush them.
   const pendingCandidatesRef = useRef({});
 
-  // 🎙️ speaking indicator
+  // 🖥️ screen share refs
+  const screenStreamRef        = useRef(null);
+  const localScreenVideoRef    = useRef(null);
+  const screenVideoRefs        = useRef({});
+  const screenVideoRefCallbacksRef = useRef({});
+
   const { speakingMap, startMonitor, stopMonitor, stopAll } = useSpeakingDetection(18);
 
   const cleanupPeer = useCallback((socketId) => {
@@ -29,6 +36,8 @@ export default function CallView({ socket, workspaceId, user }) {
       delete audioRefs.current[socketId];
     }
     delete pendingCandidatesRef.current[socketId];
+    delete screenVideoRefs.current[socketId];
+    delete screenVideoRefCallbacksRef.current[socketId];
     stopMonitor(socketId);
   }, [stopMonitor]);
 
@@ -45,18 +54,6 @@ export default function CallView({ socket, workspaceId, user }) {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
-          // ✅ TURN server — required when a direct P2P path can't be
-          // established (symmetric NAT, hotspot NAT without loopback
-          // support, client isolation, etc). STUN alone is not enough
-          // in these cases. Sign up free (20GB/mo, no card) at
-          // https://www.metered.ca/tools/openrelay/ and paste the
-          // iceServers snippet from their dashboard here — it will
-          // include entries like:
-          // {
-          //   urls: "turn:global.relay.metered.ca:80",
-          //   username: "YOUR_METERED_USERNAME",
-          //   credential: "YOUR_METERED_CREDENTIAL",
-          // },
         ]
       }
     });
@@ -73,8 +70,6 @@ export default function CallView({ socket, workspaceId, user }) {
       }
     });
 
-    // 🔍 DIAGNOSTIC: if this never logs, the P2P link never actually
-    // formed — almost always means you need a TURN server (see above).
     peer.on("connect", () => {
       console.log(`✅ PEER CONNECTED (data channel open) -> ${targetSocketId}`);
     });
@@ -88,16 +83,31 @@ export default function CallView({ socket, workspaceId, user }) {
       };
     }
 
+    // 🖥️ A screen-share track arrives as its OWN MediaStream (video-only,
+    // no audio) since we add it via addTrack(track, newStream) rather
+    // than mixing it into the original audio call stream. We branch on
+    // track kind so the original audio-call path below is completely
+    // untouched by screen sharing.
     peer.on("stream", (remoteStream) => {
+      const hasAudio = remoteStream.getAudioTracks().length > 0;
+      const hasVideo = remoteStream.getVideoTracks().length > 0;
+
       console.log(`🎧 STREAM RECEIVED <- ${targetSocketId}`, remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
-      let audio = audioRefs.current[targetSocketId];
-      if (!audio) {
-        audio = new Audio();
-        audioRefs.current[targetSocketId] = audio;
+
+      if (hasAudio) {
+        let audio = audioRefs.current[targetSocketId];
+        if (!audio) {
+          audio = new Audio();
+          audioRefs.current[targetSocketId] = audio;
+        }
+        audio.srcObject = remoteStream;
+        audio.play().catch(console.error);
+        startMonitor(targetSocketId, remoteStream);
       }
-      audio.srcObject = remoteStream;
-      audio.play().catch(console.error);
-      startMonitor(targetSocketId, remoteStream);
+
+      if (hasVideo) {
+        setScreenShareStreams((prev) => ({ ...prev, [targetSocketId]: remoteStream }));
+      }
     });
 
     peer.on("error", (e) => console.error(`❌ Peer error (${targetSocketId}):`, e));
@@ -108,7 +118,6 @@ export default function CallView({ socket, workspaceId, user }) {
 
     peersRef.current[targetSocketId] = peer;
 
-    // Flush any ICE candidates that arrived before this peer existed
     if (pendingCandidatesRef.current[targetSocketId]) {
       pendingCandidatesRef.current[targetSocketId].forEach((c) => peer.signal(c));
       delete pendingCandidatesRef.current[targetSocketId];
@@ -122,13 +131,6 @@ export default function CallView({ socket, workspaceId, user }) {
 
     const onUserJoined = ({ socketId, username, callType }) => {
       if (!localStreamRef.current) return;
-      // ⚠️ Do NOT create a peer here as initiator. The new joiner already
-      // creates a peer toward us (initiator: true) via
-      // onExistingParticipants. If we also initiate here, both sides
-      // generate competing SDP offers (WebRTC "glare") and the connection
-      // ends up half-broken — sockets connect and you see the tile/name,
-      // but audio never actually negotiates. We just track the
-      // participant and wait for their offer in onOffer below.
       setParticipants((prev) => {
         if (prev.find((p) => p.socketId === socketId)) return prev;
         return [...prev, { socketId, username, callType }];
@@ -167,8 +169,6 @@ export default function CallView({ socket, workspaceId, user }) {
       if (p) {
         p.signal(candidate);
       } else {
-        // Peer not created yet — queue instead of dropping silently.
-        // createPeer() flushes this once the peer exists.
         if (!pendingCandidatesRef.current[fromSocketId]) {
           pendingCandidatesRef.current[fromSocketId] = [];
         }
@@ -180,9 +180,27 @@ export default function CallView({ socket, workspaceId, user }) {
       console.log(`📴 ${username} left`);
       cleanupPeer(socketId);
       setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
+      setScreenShareStreams((prev) => {
+        if (!prev[socketId]) return prev;
+        const next = { ...prev };
+        delete next[socketId];
+        return next;
+      });
     };
 
     const onCallEnded = () => leaveCall(false);
+
+    // 🖥️ screen-share-stop is our signal to clear a stale tile — the
+    // renegotiated track removal doesn't reliably fire a UI-visible
+    // event on its own, so we rely on this explicit message instead.
+    const onScreenShareStop = ({ socketId }) => {
+      setScreenShareStreams((prev) => {
+        if (!prev[socketId]) return prev;
+        const next = { ...prev };
+        delete next[socketId];
+        return next;
+      });
+    };
 
     socket.on("call-user-joined",          onUserJoined);
     socket.on("call-existing-participants", onExistingParticipants);
@@ -191,6 +209,7 @@ export default function CallView({ socket, workspaceId, user }) {
     socket.on("call-ice-candidate",        onIceCandidate);
     socket.on("call-user-left",            onUserLeft);
     socket.on("call-ended",               onCallEnded);
+    socket.on("screen-share-stop",        onScreenShareStop);
 
     return () => {
       socket.off("call-user-joined",          onUserJoined);
@@ -200,8 +219,41 @@ export default function CallView({ socket, workspaceId, user }) {
       socket.off("call-ice-candidate",        onIceCandidate);
       socket.off("call-user-left",            onUserLeft);
       socket.off("call-ended",               onCallEnded);
+      socket.off("screen-share-stop",        onScreenShareStop);
     };
   }, [socket, createPeer, cleanupPeer]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stable ref-callback per remote sharer, same pattern used in VideoView
+  // to avoid re-triggering srcObject assignment on unrelated re-renders.
+  const getScreenVideoRefCallback = useCallback((socketId) => {
+    if (!screenVideoRefCallbacksRef.current[socketId]) {
+      screenVideoRefCallbacksRef.current[socketId] = (el) => {
+        if (el) {
+          screenVideoRefs.current[socketId] = el;
+          if (screenShareStreams[socketId]) {
+            el.srcObject = screenShareStreams[socketId];
+          }
+        } else {
+          delete screenVideoRefs.current[socketId];
+        }
+      };
+    }
+    return screenVideoRefCallbacksRef.current[socketId];
+  }, [screenShareStreams]);
+
+  useEffect(() => {
+    Object.entries(screenShareStreams).forEach(([socketId, stream]) => {
+      if (screenVideoRefs.current[socketId]) {
+        screenVideoRefs.current[socketId].srcObject = stream;
+      }
+    });
+  }, [screenShareStreams]);
+
+  useEffect(() => {
+    if (screenSharing && localScreenVideoRef.current && screenStreamRef.current) {
+      localScreenVideoRef.current.srcObject = screenStreamRef.current;
+    }
+  }, [screenSharing]);
 
   const joinCall = async () => {
     setError("");
@@ -214,7 +266,6 @@ export default function CallView({ socket, workspaceId, user }) {
         return;
       }
 
-      // ✅ Enumerate devices first
       const devices  = await navigator.mediaDevices.enumerateDevices();
       const hasAudio = devices.some((d) => d.kind === "audioinput");
       console.log("🎤 Audio devices:", devices.filter((d) => d.kind === "audioinput"));
@@ -256,7 +307,86 @@ export default function CallView({ socket, workspaceId, user }) {
     }
   };
 
+  // 🖥️ ── SCREEN SHARE ──────────────────────────────────────
+  // Unlike VideoView (which replaces an existing video track), this
+  // call has no video track to replace — so we ADD one via
+  // peer.addTrack(). That triggers a one-time renegotiation per peer,
+  // which flows through the exact same call-offer/call-answer/
+  // call-ice-candidate handlers already wired up above. The original
+  // audio track/connection is never touched.
+
+  const startScreenShare = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      setError("Screen sharing isn't supported in this app build.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false
+      });
+      const track = stream.getVideoTracks()[0];
+      if (!track) return;
+
+      screenStreamRef.current = stream;
+
+      Object.values(peersRef.current).forEach((peer) => {
+        try {
+          if (typeof peer.addTrack === "function") {
+            peer.addTrack(track, stream);
+          } else {
+            console.warn("This simple-peer version doesn't support addTrack — screen share skipped for a peer.");
+          }
+        } catch (err) {
+          console.error("addTrack failed for a peer (non-fatal):", err);
+        }
+      });
+
+      setScreenSharing(true);
+      socket.emit("screen-share-start", { workspaceId });
+
+      // Handle the browser/OS native "Stop sharing" bar too.
+      track.onended = () => stopScreenShare();
+    } catch (err) {
+      console.error("Screen share error:", err);
+      if (err.name !== "NotAllowedError") {
+        setError("Could not start screen share.");
+      }
+    }
+  };
+
+  const stopScreenShare = () => {
+    if (!screenStreamRef.current) return;
+    const track = screenStreamRef.current.getVideoTracks()[0];
+
+    Object.values(peersRef.current).forEach((peer) => {
+      try {
+        if (track && typeof peer.removeTrack === "function") {
+          peer.removeTrack(track, screenStreamRef.current);
+        }
+      } catch (err) {
+        console.error("removeTrack failed for a peer (non-fatal):", err);
+      }
+    });
+
+    screenStreamRef.current.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    setScreenSharing(false);
+    socket.emit("screen-share-stop", { workspaceId });
+  };
+
+  const toggleScreenShare = () => {
+    if (screenSharing) stopScreenShare();
+    else startScreenShare();
+  };
+
   const leaveCall = useCallback((notify = true) => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+      setScreenSharing(false);
+    }
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
@@ -267,6 +397,7 @@ export default function CallView({ socket, workspaceId, user }) {
     setInCall(false);
     setParticipants([]);
     setMuted(false);
+    setScreenShareStreams({});
     if (notify && socket) socket.emit("call-leave", { workspaceId });
   }, [socket, workspaceId, cleanupPeer, stopAll]);
 
@@ -279,6 +410,7 @@ export default function CallView({ socket, workspaceId, user }) {
   useEffect(() => { return () => leaveCall(true); }, [leaveCall]);
 
   const selfSpeaking = !!speakingMap.self && !muted;
+  const hasAnyScreenShare = screenSharing || Object.keys(screenShareStreams).length > 0;
 
   return (
     <div className="call-container">
@@ -315,13 +447,38 @@ export default function CallView({ socket, workspaceId, user }) {
           </div>
         ) : (
           <>
+            {/* 🖥️ Screen share tiles — only rendered when someone is
+                actually sharing. The rest of the audio-only UI below is
+                completely unchanged. */}
+            {hasAnyScreenShare && (
+              <div className="screen-share-panel">
+                {screenSharing && (
+                  <div className="screen-share-tile">
+                    <video ref={localScreenVideoRef} autoPlay muted playsInline />
+                    <div className="screen-share-label">You are sharing 🖥️</div>
+                  </div>
+                )}
+                {Object.keys(screenShareStreams).map((socketId) => {
+                  const p = participants.find((pt) => pt.socketId === socketId);
+                  return (
+                    <div key={socketId} className="screen-share-tile">
+                      <video ref={getScreenVideoRefCallback(socketId)} autoPlay playsInline />
+                      <div className="screen-share-label">
+                        {p?.username || "Someone"} is sharing 🖥️
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="call-participants">
               <div className="call-participant self">
                 <div className={`call-avatar ${muted ? "muted" : "active"} ${selfSpeaking ? "speaking" : ""}`}>
                   {user?.username?.[0]?.toUpperCase()}
                 </div>
                 <span className="call-participant-name">
-                  {user?.username} (you)
+                  {user?.username} (you){screenSharing && " 🖥️"}
                 </span>
                 <span className="call-participant-status">
                   {muted ? "🔇" : "🎙️"}
@@ -335,7 +492,9 @@ export default function CallView({ socket, workspaceId, user }) {
                     <div className={`call-avatar active ${isSpeaking ? "speaking" : ""}`}>
                       {p.username?.[0]?.toUpperCase()}
                     </div>
-                    <span className="call-participant-name">{p.username}</span>
+                    <span className="call-participant-name">
+                      {p.username}{screenShareStreams[p.socketId] && " 🖥️"}
+                    </span>
                     <span className="call-participant-status">🎙️</span>
                   </div>
                 );
@@ -349,6 +508,13 @@ export default function CallView({ socket, workspaceId, user }) {
               >
                 {muted ? "🔇" : "🎙️"}
                 <span>{muted ? "Unmute" : "Mute"}</span>
+              </button>
+              <button
+                className={`call-ctrl-btn ${screenSharing ? "active" : ""}`}
+                onClick={toggleScreenShare}
+              >
+                🖥️
+                <span>{screenSharing ? "Stop Sharing" : "Share Screen"}</span>
               </button>
               <button
                 className="call-ctrl-btn end"
