@@ -532,16 +532,23 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    // Left-click the tray icon -> bring the window back.
-                    if let TrayIconEvent::Click { .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
+                        // Only react to a LEFT click here. Right-click already shows the
+                        // menu (Open/Quit) automatically since it's attached via .menu()
+                        // — we must not touch the window on right-click, or we steal
+                        // focus and the menu closes before you can see it.
+                        if let TrayIconEvent::Click { button, button_state, .. } = event {
+                            if button == tauri::tray::MouseButton::Left
+                                && button_state == tauri::tray::MouseButtonState::Up
+                            {
+                                let app = tray.app_handle();
+                                if let Some(w) = app.get_webview_window("main") {
+                                    let _ = w.show();
+                                    let _ = w.unminimize();
+                                    let _ = w.set_focus();
+                                }
+                            }
                         }
-                    }
-                })
+                    })
                 .build(app)?;
 
             // ── 🖥️ CLOSE-TO-TRAY ────────────────────────
