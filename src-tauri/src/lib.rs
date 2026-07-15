@@ -2,7 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::Manager;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::{Manager, WindowEvent};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartManagerExt};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -418,17 +423,6 @@ fn rename_path(old_path: String, new_path: String) -> OpResult {
     }
 }
 
-// ─────────────────────────────────────────
-// ✅ CROSS-PLATFORM FIX
-// Windows has no /bin/sh, so "sh -c <command>" (the old implementation)
-// silently fails to even launch on Windows — that's why nothing ran,
-// including plain commands like `git --version`.
-// We now pick the right shell per OS:
-//   - Windows -> cmd /C <command>   (built into every Windows install)
-//   - Linux/macOS -> sh -c <command>
-// CREATE_NO_WINDOW stops a black console window from flashing on screen
-// every time a command runs on Windows.
-// ─────────────────────────────────────────
 #[tauri::command]
 fn run_command(command: String, cwd: String) -> String {
     if command.trim().is_empty() { return "Error: No command provided".to_string(); }
@@ -462,17 +456,31 @@ fn run_command(command: String, cwd: String) -> String {
 }
 
 // ─────────────────────────────────────────
+// 🖥️ AUTOSTART (launch on Windows login)
+// ─────────────────────────────────────────
+
+#[tauri::command]
+fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| e.to_string())
+    } else {
+        manager.disable().map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+// ─────────────────────────────────────────
 // APP ENTRY
 // ─────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // ✅ Fixes video flickering in the installed/compiled app on Windows.
-    // WebView2's GPU-accelerated compositor has a known issue where live
-    // <video> elements fed by WebRTC MediaStreams flicker/tear — this
-    // mostly only shows up in the fully compiled build (not `tauri dev`,
-    // which can behave differently). Must be set before the WebView2
-    // environment is created, so this runs first, before Builder::default().
     #[cfg(target_os = "windows")]
     {
         std::env::set_var(
@@ -484,9 +492,73 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        // 🖥️ Flag flipped only by the tray "Quit" item — lets the window
+        // CloseRequested handler tell a real quit apart from the user
+        // just clicking the window's X button.
+        .manage(Arc::new(AtomicBool::new(false)))
         .setup(|app| {
             let window = app.get_webview_window("main")
                 .expect("main window not found");
+
+            // ── 🖥️ SYSTEM TRAY ──────────────────────────
+            let open_item = MenuItemBuilder::new("Open Converge").id("open").build(app)?;
+            let quit_item = MenuItemBuilder::new("Quit").id("quit").build(app)?;
+            let tray_menu = MenuBuilder::new(app)
+                .items(&[&open_item, &quit_item])
+                .build()?;
+
+            let quitting: Arc<AtomicBool> = app.state::<Arc<AtomicBool>>().inner().clone();
+            let quitting_for_menu = quitting.clone();
+
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Converge")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "open" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        quitting_for_menu.store(true, Ordering::SeqCst);
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    // Left-click the tray icon -> bring the window back.
+                    if let TrayIconEvent::Click { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // ── 🖥️ CLOSE-TO-TRAY ────────────────────────
+            // Clicking the window's X hides it instead of exiting the
+            // process — the socket connection (and call/chat state)
+            // stays alive in the background, same as Discord/Slack.
+            // Only the tray's "Quit" sets `quitting` and actually exits.
+            let close_window   = window.clone();
+            let quitting_close = quitting.clone();
+            window.on_window_event(move |event| {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    if !quitting_close.load(Ordering::SeqCst) {
+                        let _ = close_window.hide();
+                        api.prevent_close();
+                    }
+                }
+            });
 
             #[cfg(target_os = "linux")]
             {
@@ -497,7 +569,6 @@ pub fn run() {
                     let wk = webview.inner();
 
                     if let Some(settings) = wk.settings() {
-                        // ✅ Enable all media
                         settings.set_enable_media_stream(true);
                         settings.set_enable_media(true);
                         settings.set_enable_mediasource(true);
@@ -506,18 +577,14 @@ pub fn run() {
                         settings.set_enable_encrypted_media(true);
                         settings.set_allow_universal_access_from_file_urls(true);
                         settings.set_allow_file_access_from_file_urls(true);
-
-                        // ✅ Disable web security to allow localhost getUserMedia
                         settings.set_enable_write_console_messages_to_stdout(true);
                     }
 
-                    // ✅ Auto-allow ALL permission requests
-                    // This handles camera, mic, notifications etc
                     wk.connect_permission_request(|_view, request| {
                         use webkit2gtk::PermissionRequestExt;
                         println!("🔐 Permission requested — auto allowing");
                         request.allow();
-                        true // handled
+                        true
                     });
 
                 }).expect("failed to configure webview");
@@ -540,6 +607,8 @@ pub fn run() {
             delete_path,
             rename_path,
             run_command,
+            set_autostart,
+            get_autostart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
