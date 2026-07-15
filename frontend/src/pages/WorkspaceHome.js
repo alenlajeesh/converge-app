@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
+import { invoke } from "@tauri-apps/api/core";
 
 import ActivityBar       from "../components/ActivityBar";
 import Sidebar           from "../components/Sidebar";
@@ -12,7 +13,9 @@ import ChatView          from "../components/ChatView";
 import CallView          from "../components/CallView";
 import VideoView         from "../components/VideoView";
 import TaskView          from "../components/TaskView";
-import CallNotification  from "../components/CallNotification";
+import NotificationToast from "../components/NotificationToast";
+
+import { initNotifications, notifyIfUnfocused } from "../utils/notifications";
 
 import * as api from "../api";
 import "../styles/workspace.css";
@@ -48,6 +51,18 @@ function WorkspaceHome() {
   const [callNotif, setCallNotif] = useState(null);
   // callNotif = { participants, workspaceId, callType } | null
 
+  // 🖥️ Chat toast stack — separate from callNotif so the call-notif
+  // logic below is untouched, chat toasts just stack alongside it.
+  const [chatToasts, setChatToasts] = useState([]);
+  const chatToastIdRef = useRef(0);
+
+  const dismissChatToast = useCallback((toastId) => {
+    setChatToasts((prev) => prev.filter((t) => t.id !== toastId));
+  }, []);
+
+  // 🖥️ Autostart toggle state
+  const [autostartOn, setAutostartOn] = useState(false);
+
   // ── Unused but needed for setters ───────
   const [, setTreeLoading] = useState(false); // eslint-disable-line no-unused-vars
   const [, setSelectedDir] = useState(null);  // eslint-disable-line no-unused-vars
@@ -70,6 +85,24 @@ function WorkspaceHome() {
     if (!rootPath) navigate("/", { replace: true });
   }, [rootPath, navigate]);
 
+  // ── 🖥️ Notifications: request permission + fetch autostart state ──
+  useEffect(() => {
+    initNotifications();
+    invoke("get_autostart")
+      .then(setAutostartOn)
+      .catch((err) => console.error("get_autostart error:", err));
+  }, []);
+
+  const toggleAutostart = async () => {
+    try {
+      const next = !autostartOn;
+      await invoke("set_autostart", { enabled: next });
+      setAutostartOn(next);
+    } catch (err) {
+      console.error("set_autostart error:", err);
+    }
+  };
+
   // ── Workspace socket for call notifications
   useEffect(() => {
     if (!token || !workspaceId) return;
@@ -88,14 +121,20 @@ function WorkspaceHome() {
     socket.on("call-active", ({ participants, workspaceId: wid }) => {
       if (!participants || participants.length === 0) return;
 
+      const callType = participants[0]?.callType || "audio";
+
       // Don't show notification if already in call view
       setActiveView((current) => {
         if (current === "call" || current === "video") return current;
-
-        const callType = participants[0]?.callType || "audio";
         setCallNotif({ participants, workspaceId: wid, callType });
         return current;
       });
+
+      // 🖥️ Native OS toast if the window isn't focused right now
+      notifyIfUnfocused(
+        `${callType === "video" ? "Video" : "Voice"} call started`,
+        participants.map((p) => p.username).join(", ")
+      );
     });
 
     // Hide notification when call ends
@@ -103,11 +142,38 @@ function WorkspaceHome() {
       setCallNotif(null);
     });
 
+    // 🖥️ Chat notifications — this socket already joined the workspace
+    // room via join-workspace, so it receives receive-message broadcasts
+    // the same as ChatView does. Skip our own messages and skip the
+    // toast (but not the OS notification) if Chat is already open.
+    socket.on("receive-message", (msg) => {
+      if (!msg || !user) return;
+      const isOwn = String(msg.userId) === String(user.id);
+      if (isOwn) return;
+
+      setActiveView((current) => {
+        if (current !== "chat") {
+          setChatToasts((prev) => [
+            ...prev,
+            {
+              id: ++chatToastIdRef.current,
+              type: "chat",
+              username: msg.username,
+              message: msg.message
+            }
+          ]);
+        }
+        return current;
+      });
+
+      notifyIfUnfocused(msg.username, msg.message);
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, workspaceId, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── File tree ────────────────────────────
   const buildTree = useCallback(async (dirPath) => {
@@ -329,6 +395,13 @@ function WorkspaceHome() {
 
           <div className="topbar-actions">
             <button
+              className={`topbar-btn ${autostartOn ? "active" : ""}`}
+              onClick={toggleAutostart}
+              title="Launch Converge when Windows starts"
+            >
+              🚀 Autostart {autostartOn ? "On" : "Off"}
+            </button>
+            <button
               className={`topbar-btn ${showTerminal ? "active" : ""}`}
               onClick={() => setShowTerminal((v) => !v)}
             >
@@ -361,7 +434,6 @@ function WorkspaceHome() {
             <TaskView workspaceId={workspaceId} />
           )}
 
-          {/* ✅ Pass socket, workspaceId, user to CallView */}
           {activeView === "call" && (
             <CallView
               socket={socketRef.current}
@@ -370,7 +442,6 @@ function WorkspaceHome() {
             />
           )}
 
-          {/* ✅ Pass socket, workspaceId, user to VideoView */}
           {activeView === "video" && (
             <VideoView
               socket={socketRef.current}
@@ -401,21 +472,34 @@ function WorkspaceHome() {
         onDelete={handleDelete}
       />
 
-      {/* ✅ CALL NOTIFICATION TOAST */}
-      {callNotif && (
-        <CallNotification
-          participants={callNotif.participants}
-          workspaceId={callNotif.workspaceId}
-          callType={callNotif.callType}
-          onJoin={() => {
-            const view = callNotif.callType === "video" ? "video" : "call";
-            setActiveView(view);
-            setSidebarOpen(false);
-            setCallNotif(null);
-          }}
-          onDismiss={() => setCallNotif(null)}
-        />
-      )}
+      {/* 🖥️ NOTIFICATION TOAST STACK — call notif + chat toasts */}
+      <div className="toast-stack">
+        {callNotif && (
+          <NotificationToast
+            toast={{
+              id: "call",
+              type: "call",
+              callType: callNotif.callType,
+              participants: callNotif.participants
+            }}
+            onJoin={() => {
+              const view = callNotif.callType === "video" ? "video" : "call";
+              setActiveView(view);
+              setSidebarOpen(false);
+              setCallNotif(null);
+            }}
+            onDismiss={() => setCallNotif(null)}
+          />
+        )}
+        {chatToasts.map((t) => (
+          <NotificationToast
+            key={t.id}
+            toast={t}
+            onJoin={() => {}}
+            onDismiss={dismissChatToast}
+          />
+        ))}
+      </div>
     </div>
   );
 }

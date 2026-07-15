@@ -10,21 +10,21 @@ export default function VideoView({ socket, workspaceId, user }) {
   const [connecting,   setConnecting]   = useState(false);
   const [error,        setError]        = useState("");
 
+  // 🖥️ screen share state
+  const [screenSharing,    setScreenSharing]    = useState(false);
+  const [remoteSharing,    setRemoteSharing]    = useState({}); // { socketId: true }
+
   const localStreamRef = useRef(null);
   const localVideoRef  = useRef(null);
   const peersRef       = useRef({});
   const videoRefs      = useRef({});
-  // Stable ref-callback cache — prevents React from treating the ref as
-  // "new" on every re-render (e.g. every time the speaking indicator
-  // toggles), which was causing repeated srcObject reassignment and
-  // visible video/audio flicker.
   const videoRefCallbacksRef = useRef({});
-  // ICE candidates that arrive before the peer object exists yet
-  // (e.g. a candidate lands before its matching offer has been
-  // processed) used to be silently dropped. We queue and flush them.
   const pendingCandidatesRef = useRef({});
 
-  // 🎙️ speaking indicator
+  // 🖥️ screen share refs
+  const screenStreamRef = useRef(null);
+  const cameraTrackRef  = useRef(null); // holds the camera track while screen sharing is active
+
   const { speakingMap, startMonitor, stopMonitor, stopAll } = useSpeakingDetection(18);
 
   const cleanupPeer = useCallback((socketId) => {
@@ -51,20 +51,6 @@ export default function VideoView({ socket, workspaceId, user }) {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
-          // ✅ TURN server — required when a direct P2P path can't be
-          // established (symmetric NAT, hotspot NAT without loopback
-          // support, client isolation, etc). STUN alone is not enough
-          // in these cases — this is almost certainly why two laptops
-          // on the same phone hotspot can't see/hear each other.
-          // Sign up free (20GB/mo, no card) at
-          // https://www.metered.ca/tools/openrelay/ and paste the
-          // iceServers snippet from their dashboard here — it will
-          // include entries like:
-          // {
-          //   urls: "turn:global.relay.metered.ca:80",
-          //   username: "YOUR_METERED_USERNAME",
-          //   credential: "YOUR_METERED_CREDENTIAL",
-          // },
         ]
       }
     });
@@ -81,10 +67,6 @@ export default function VideoView({ socket, workspaceId, user }) {
       }
     });
 
-    // 🔍 DIAGNOSTIC: tells you definitively whether the two browsers
-    // ever actually established a P2P connection. If this never logs
-    // "connected", ICE failed (almost always means you need a TURN
-    // server — STUN alone can't traverse some NAT/firewall setups).
     peer.on("connect", () => {
       console.log(`✅ PEER CONNECTED (data channel open) -> ${targetSocketId}`);
     });
@@ -116,7 +98,6 @@ export default function VideoView({ socket, workspaceId, user }) {
 
     peersRef.current[targetSocketId] = peer;
 
-    // Flush any ICE candidates that arrived before this peer existed
     if (pendingCandidatesRef.current[targetSocketId]) {
       pendingCandidatesRef.current[targetSocketId].forEach((c) => peer.signal(c));
       delete pendingCandidatesRef.current[targetSocketId];
@@ -130,13 +111,6 @@ export default function VideoView({ socket, workspaceId, user }) {
 
     const onUserJoined = ({ socketId, username }) => {
       if (!localStreamRef.current) return;
-      // ⚠️ Do NOT create a peer here as initiator. The new joiner already
-      // creates a peer toward us (initiator: true) via
-      // onExistingParticipants. If we also initiate here, both sides
-      // generate competing SDP offers (WebRTC "glare") and the connection
-      // ends up half-broken — sockets connect and you see the tile/name,
-      // but audio/video tracks never actually negotiate. We just track
-      // the participant and wait for their offer in onOffer below.
       setParticipants((prev) => {
         if (prev.find((p) => p.socketId === socketId)) return prev;
         return [...prev, { socketId, username, stream: null }];
@@ -175,8 +149,6 @@ export default function VideoView({ socket, workspaceId, user }) {
       if (p) {
         p.signal(candidate);
       } else {
-        // Peer not created yet — queue instead of dropping silently.
-        // createPeer() flushes this once the peer exists.
         if (!pendingCandidatesRef.current[fromSocketId]) {
           pendingCandidatesRef.current[fromSocketId] = [];
         }
@@ -188,9 +160,28 @@ export default function VideoView({ socket, workspaceId, user }) {
       console.log(`📴 ${username} left`);
       cleanupPeer(socketId);
       setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
+      setRemoteSharing((prev) => {
+        if (!prev[socketId]) return prev;
+        const next = { ...prev };
+        delete next[socketId];
+        return next;
+      });
     };
 
     const onCallEnded = () => leaveCall(false);
+
+    // 🖥️ screen share labels — purely cosmetic, never touches media/peers
+    const onScreenShareStart = ({ socketId }) => {
+      setRemoteSharing((prev) => ({ ...prev, [socketId]: true }));
+    };
+    const onScreenShareStop = ({ socketId }) => {
+      setRemoteSharing((prev) => {
+        if (!prev[socketId]) return prev;
+        const next = { ...prev };
+        delete next[socketId];
+        return next;
+      });
+    };
 
     socket.on("call-user-joined",          onUserJoined);
     socket.on("call-existing-participants", onExistingParticipants);
@@ -199,6 +190,8 @@ export default function VideoView({ socket, workspaceId, user }) {
     socket.on("call-ice-candidate",        onIceCandidate);
     socket.on("call-user-left",            onUserLeft);
     socket.on("call-ended",               onCallEnded);
+    socket.on("screen-share-start",       onScreenShareStart);
+    socket.on("screen-share-stop",        onScreenShareStop);
 
     return () => {
       socket.off("call-user-joined",          onUserJoined);
@@ -208,13 +201,11 @@ export default function VideoView({ socket, workspaceId, user }) {
       socket.off("call-ice-candidate",        onIceCandidate);
       socket.off("call-user-left",            onUserLeft);
       socket.off("call-ended",               onCallEnded);
+      socket.off("screen-share-start",       onScreenShareStart);
+      socket.off("screen-share-stop",        onScreenShareStop);
     };
   }, [socket, createPeer, cleanupPeer]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Returns the SAME function reference across renders for a given
-  // socketId, so React doesn't detach/reattach the <video> ref (and
-  // therefore doesn't retrigger srcObject assignment) on unrelated
-  // re-renders like speaking-indicator updates.
   const getVideoRefCallback = useCallback((socketId) => {
     if (!videoRefCallbacksRef.current[socketId]) {
       videoRefCallbacksRef.current[socketId] = (el) => {
@@ -228,7 +219,6 @@ export default function VideoView({ socket, workspaceId, user }) {
     return videoRefCallbacksRef.current[socketId];
   }, []);
 
-  // Attach remote participant streams once their <video> tiles exist
   useEffect(() => {
     participants.forEach((p) => {
       if (p.stream && videoRefs.current[p.socketId]) {
@@ -237,8 +227,6 @@ export default function VideoView({ socket, workspaceId, user }) {
     });
   }, [participants]);
 
-  // Attach the LOCAL stream only after the <video> element has actually
-  // mounted (i.e. after inCall becomes true and the call body re-renders).
   useEffect(() => {
     if (inCall && localVideoRef.current && localStreamRef.current) {
       localVideoRef.current.srcObject = localStreamRef.current;
@@ -256,7 +244,6 @@ export default function VideoView({ socket, workspaceId, user }) {
         return;
       }
 
-      // ✅ Check available devices first
       const devices  = await navigator.mediaDevices.enumerateDevices();
       const hasAudio = devices.some((d) => d.kind === "audioinput");
       const hasVideo = devices.some((d) => d.kind === "videoinput");
@@ -273,7 +260,6 @@ export default function VideoView({ socket, workspaceId, user }) {
       let stream;
 
       try {
-        // ✅ Request only what's available
         stream = await navigator.mediaDevices.getUserMedia({
           audio: hasAudio,
           video: hasVideo
@@ -281,7 +267,6 @@ export default function VideoView({ socket, workspaceId, user }) {
       } catch (firstErr) {
         console.warn("First attempt failed:", firstErr.name);
 
-        // ✅ Fallback — try audio only
         if (hasAudio) {
           try {
             stream = await navigator.mediaDevices.getUserMedia({
@@ -316,7 +301,6 @@ export default function VideoView({ socket, workspaceId, user }) {
         setError("Device is in use by another application.");
       } else if (err.name === "OverconstrainedError") {
         setError("Device constraints not satisfied. Trying simpler configuration...");
-        // Last resort — try with no constraints
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: true,
@@ -338,7 +322,115 @@ export default function VideoView({ socket, workspaceId, user }) {
     }
   };
 
+  // 🖥️ ── SCREEN SHARE ──────────────────────────────────────
+  // Swaps the outgoing video track on every existing peer connection
+  // via replaceTrack(). This does NOT renegotiate the connection or
+  // touch offer/answer/ICE — same call, different pixels. Audio track
+  // is never touched, so mute/call audio can't be affected by this.
+
+  const swapTrackForAllPeers = (oldTrack, newTrack) => {
+    Object.values(peersRef.current).forEach((peer) => {
+      try {
+        peer.replaceTrack(oldTrack, newTrack, localStreamRef.current);
+      } catch (err) {
+        console.error("replaceTrack failed for a peer (non-fatal):", err);
+      }
+    });
+  };
+
+  const startScreenShare = async () => {
+    if (!localStreamRef.current) return;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      setError("Screen sharing isn't supported in this app build.");
+      return;
+    }
+
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false
+      });
+      const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) return;
+
+      const camTrack = localStreamRef.current.getVideoTracks()[0];
+      cameraTrackRef.current = camTrack || null;
+      screenStreamRef.current = screenStream;
+
+      if (camTrack) {
+        swapTrackForAllPeers(camTrack, screenTrack);
+        localStreamRef.current.removeTrack(camTrack);
+      }
+      localStreamRef.current.addTrack(screenTrack);
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
+      }
+
+      setScreenSharing(true);
+      socket.emit("screen-share-start", { workspaceId });
+
+      // If the user stops sharing via the browser/OS "Stop sharing" bar
+      // instead of our button, revert automatically.
+      screenTrack.onended = () => {
+        stopScreenShare();
+      };
+    } catch (err) {
+      console.error("Screen share error:", err);
+      if (err.name !== "NotAllowedError") {
+        setError("Could not start screen share.");
+      }
+    }
+  };
+
+  const stopScreenShare = () => {
+    if (!screenStreamRef.current) return;
+
+    const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+
+    (async () => {
+      try {
+        let camTrack = cameraTrackRef.current;
+        if (!camTrack || camTrack.readyState === "ended") {
+          const freshStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          camTrack = freshStream.getVideoTracks()[0];
+        }
+
+        if (camTrack) {
+          if (screenTrack) swapTrackForAllPeers(screenTrack, camTrack);
+          if (screenTrack) localStreamRef.current.removeTrack(screenTrack);
+          localStreamRef.current.addTrack(camTrack);
+          cameraTrackRef.current = camTrack;
+          camTrack.enabled = !videoOff;
+        }
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+        }
+      } catch (err) {
+        console.error("Failed to restore camera after screen share:", err);
+      } finally {
+        if (screenTrack) screenTrack.stop();
+        screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+        screenStreamRef.current = null;
+        setScreenSharing(false);
+        socket.emit("screen-share-stop", { workspaceId });
+      }
+    })();
+  };
+
+  const toggleScreenShare = () => {
+    if (screenSharing) stopScreenShare();
+    else startScreenShare();
+  };
+
   const leaveCall = useCallback((notify = true) => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+      setScreenSharing(false);
+    }
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
@@ -351,6 +443,7 @@ export default function VideoView({ socket, workspaceId, user }) {
     setParticipants([]);
     setMuted(false);
     setVideoOff(false);
+    setRemoteSharing({});
     if (notify && socket) socket.emit("call-leave", { workspaceId });
   }, [socket, workspaceId, cleanupPeer, stopAll]);
 
@@ -412,15 +505,15 @@ export default function VideoView({ socket, workspaceId, user }) {
                   autoPlay
                   muted
                   playsInline
-                  className={videoOff ? "video-off" : ""}
+                  className={videoOff && !screenSharing ? "video-off" : ""}
                 />
-                {videoOff && (
+                {videoOff && !screenSharing && (
                   <div className="video-avatar">
                     {user?.username?.[0]?.toUpperCase()}
                   </div>
                 )}
                 <div className="video-tile-name">
-                  {user?.username} (you){muted && " 🔇"}
+                  {user?.username} (you){muted && " 🔇"}{screenSharing && " 🖥️"}
                 </div>
               </div>
 
@@ -442,7 +535,9 @@ export default function VideoView({ socket, workspaceId, user }) {
                         {p.username?.[0]?.toUpperCase()}
                       </div>
                     )}
-                    <div className="video-tile-name">{p.username}</div>
+                    <div className="video-tile-name">
+                      {p.username}{remoteSharing[p.socketId] && " 🖥️"}
+                    </div>
                   </div>
                 );
               })}
@@ -459,9 +554,17 @@ export default function VideoView({ socket, workspaceId, user }) {
               <button
                 className={`call-ctrl-btn ${videoOff ? "danger" : ""}`}
                 onClick={toggleVideo}
+                disabled={screenSharing}
               >
                 {videoOff ? "📵" : "📹"}
                 <span>{videoOff ? "Start Video" : "Stop Video"}</span>
+              </button>
+              <button
+                className={`call-ctrl-btn ${screenSharing ? "active" : ""}`}
+                onClick={toggleScreenShare}
+              >
+                🖥️
+                <span>{screenSharing ? "Stop Sharing" : "Share Screen"}</span>
               </button>
               <button
                 className="call-ctrl-btn end"

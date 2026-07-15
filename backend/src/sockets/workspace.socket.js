@@ -166,6 +166,22 @@ const workspaceSocket = (io) => {
       });
     });
 
+    // ── SCREEN SHARE (relay only — media never touches the server) ──
+    socket.on("screen-share-start", ({ workspaceId }) => {
+      if (!workspaceId) return;
+      socket.to(workspaceId).emit("screen-share-start", {
+        socketId: socket.id,
+        username: socket.user.username
+      });
+    });
+
+    socket.on("screen-share-stop", ({ workspaceId }) => {
+      if (!workspaceId) return;
+      socket.to(workspaceId).emit("screen-share-stop", {
+        socketId: socket.id
+      });
+    });
+
     // ── DISCONNECT ───────────────────────────
     socket.on("disconnect", () => {
       console.log(`❌ Disconnected: ${socket.user.username}`);
