@@ -50,3 +50,23 @@ export const renamePath = (oldPath, newPath) =>
 
 export const runCommand = (command, cwd) =>
   invoke("run_command", { command, cwd });
+
+// ── Autostart ──────────────────────────────
+export const setAutostart = (enabled) =>
+  invoke("set_autostart", { enabled });
+
+export const getAutostart = () =>
+  invoke("get_autostart");
+
+// ── Real terminal (PTY) ───────────────────
+export const createPtySession = (id, cwd) =>
+  invoke("create_pty_session", { id, cwd });
+
+export const writeToPty = (id, data) =>
+  invoke("write_to_pty", { id, data });
+
+export const resizePty = (id, rows, cols) =>
+  invoke("resize_pty", { id, rows, cols });
+
+export const closePtySession = (id) =>
+  invoke("close_pty_session", { id });

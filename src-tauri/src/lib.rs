@@ -1,12 +1,15 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartManagerExt};
 
 #[cfg(target_os = "windows")]
@@ -475,6 +478,105 @@ fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
 }
 
 // ─────────────────────────────────────────
+// 🖥️ REAL TERMINAL (PTY) SESSIONS
+// ─────────────────────────────────────────
+
+struct PtySession {
+    master: Box<dyn MasterPty + Send>,
+    writer: Box<dyn Write + Send>,
+    child:  Box<dyn Child + Send + Sync>,
+}
+
+struct PtyState {
+    sessions: Mutex<HashMap<String, PtySession>>,
+}
+
+#[tauri::command]
+fn create_pty_session(
+    app: tauri::AppHandle,
+    state: tauri::State<PtyState>,
+    id: String,
+    cwd: String,
+) -> Result<(), String> {
+    let pty_system = native_pty_system();
+
+    let pair = pty_system
+        .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    let shell = "powershell.exe".to_string();
+    #[cfg(not(target_os = "windows"))]
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+
+    let mut cmd = CommandBuilder::new(shell);
+    if !cwd.is_empty() {
+        cmd.cwd(&cwd);
+    }
+
+    let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+    // Drop the slave handle in the parent process — the child keeps it open.
+    drop(pair.slave);
+
+    let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+
+    // Reader thread: streams PTY output to the frontend as it arrives.
+    let id_for_thread = id.clone();
+    let app_for_thread = app.clone();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break, // EOF — shell exited
+                Ok(n) => {
+                    let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let _ = app_for_thread.emit(&format!("pty-output-{}", id_for_thread), chunk);
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = app_for_thread.emit(&format!("pty-closed-{}", id_for_thread), ());
+    });
+
+    let mut sessions = state.sessions.lock().unwrap();
+    sessions.insert(id, PtySession { master: pair.master, writer, child });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn write_to_pty(state: tauri::State<PtyState>, id: String, data: String) -> Result<(), String> {
+    let mut sessions = state.sessions.lock().unwrap();
+    if let Some(session) = sessions.get_mut(&id) {
+        session.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+        session.writer.flush().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn resize_pty(state: tauri::State<PtyState>, id: String, rows: u16, cols: u16) -> Result<(), String> {
+    let sessions = state.sessions.lock().unwrap();
+    if let Some(session) = sessions.get(&id) {
+        session
+            .master
+            .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn close_pty_session(state: tauri::State<PtyState>, id: String) -> Result<(), String> {
+    let mut sessions = state.sessions.lock().unwrap();
+    if let Some(mut session) = sessions.remove(&id) {
+        let _ = session.child.kill();
+    }
+    Ok(())
+}
+
+// ─────────────────────────────────────────
 // APP ENTRY
 // ─────────────────────────────────────────
 
@@ -498,6 +600,7 @@ pub fn run() {
         // CloseRequested handler tell a real quit apart from the user
         // just clicking the window's X button.
         .manage(Arc::new(AtomicBool::new(false)))
+        .manage(PtyState { sessions: Mutex::new(HashMap::new()) })
         .setup(|app| {
             let window = app.get_webview_window("main")
                 .expect("main window not found");
@@ -616,6 +719,10 @@ pub fn run() {
             run_command,
             set_autostart,
             get_autostart,
+            create_pty_session,
+            write_to_pty,
+            resize_pty,
+            close_pty_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

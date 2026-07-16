@@ -6,8 +6,9 @@ export default function Tabs({ openFiles, activeFile, setActiveFile, closeFile }
           key={file}
           className={`tab ${activeFile === file ? "active" : ""}`}
           onClick={() => setActiveFile(file)}
+          title={file}
         >
-          {file.split("/").pop()}
+          {file.split(/[\\/]/).pop()}
           <span
             className="close"
             onClick={(e) => {

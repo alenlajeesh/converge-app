@@ -32,3 +32,15 @@
   background: #2f2f42;
   color: #ffffff;
 }
+
+.menubar-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.menubar-dropdown-check {
+  color: #3b82f6;
+  font-size: 12px;
+}

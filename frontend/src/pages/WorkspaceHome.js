@@ -2,13 +2,12 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
-import { invoke } from "@tauri-apps/api/core";
 
 import ActivityBar       from "../components/ActivityBar";
 import Sidebar           from "../components/Sidebar";
 import Editor            from "../components/Editor";
 import ContextMenu       from "../components/ContextMenu";
-import Terminal          from "../components/Terminal";
+import TerminalPanel     from "../components/TerminalPanel";
 import ChatView          from "../components/ChatView";
 import CallView          from "../components/CallView";
 import VideoView         from "../components/VideoView";
@@ -60,8 +59,9 @@ function WorkspaceHome() {
     setChatToasts((prev) => prev.filter((t) => t.id !== toastId));
   }, []);
 
-  // 🖥️ Autostart toggle state
-  const [autostartOn, setAutostartOn] = useState(false);
+  // 🖥️ Terminal panel ref — lets the MenuBar's "New Terminal" event
+  // trigger a new tab inside the panel.
+  const terminalPanelRef = useRef(null);
 
   // ── Unused but needed for setters ───────
   const [, setTreeLoading] = useState(false); // eslint-disable-line no-unused-vars
@@ -85,23 +85,21 @@ function WorkspaceHome() {
     if (!rootPath) navigate("/", { replace: true });
   }, [rootPath, navigate]);
 
-  // ── 🖥️ Notifications: request permission + fetch autostart state ──
+  // ── 🖥️ Notifications ────────────────────────
   useEffect(() => {
     initNotifications();
-    invoke("get_autostart")
-      .then(setAutostartOn)
-      .catch((err) => console.error("get_autostart error:", err));
   }, []);
 
-  const toggleAutostart = async () => {
-    try {
-      const next = !autostartOn;
-      await invoke("set_autostart", { enabled: next });
-      setAutostartOn(next);
-    } catch (err) {
-      console.error("set_autostart error:", err);
-    }
-  };
+  // ── 🖥️ Listen for MenuBar's "New Terminal" event ─────────
+  useEffect(() => {
+    const handleNewTerminal = () => {
+      setShowTerminal(true);
+      // Give the panel a tick to mount if it was hidden
+      setTimeout(() => terminalPanelRef.current?.addTerminal(), 0);
+    };
+    window.addEventListener("converge:new-terminal", handleNewTerminal);
+    return () => window.removeEventListener("converge:new-terminal", handleNewTerminal);
+  }, []);
 
   // ── Workspace socket for call notifications
   useEffect(() => {
@@ -394,19 +392,6 @@ function WorkspaceHome() {
           </div>
 
           <div className="topbar-actions">
-            <button
-              className={`topbar-btn ${autostartOn ? "active" : ""}`}
-              onClick={toggleAutostart}
-              title="Launch Converge when Windows starts"
-            >
-              🚀 Autostart {autostartOn ? "On" : "Off"}
-            </button>
-            <button
-              className={`topbar-btn ${showTerminal ? "active" : ""}`}
-              onClick={() => setShowTerminal((v) => !v)}
-            >
-              ⌨ Terminal
-            </button>
             <button className="topbar-btn" onClick={() => navigate("/")}>
               ← Home
             </button>
@@ -453,7 +438,8 @@ function WorkspaceHome() {
 
         {/* TERMINAL */}
         {showTerminal && (
-          <Terminal
+          <TerminalPanel
+            ref={terminalPanelRef}
             rootPath={rootPath}
             onClose={() => setShowTerminal(false)}
           />
