@@ -813,6 +813,43 @@
 }
 
 /* ===========================
+   LOGIN REQUIRED (chat/tasks/call/video)
+=========================== */
+.login-required {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 24px;
+}
+
+.login-required-icon {
+  font-size: 32px;
+  opacity: 0.6;
+}
+
+.login-required h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.login-required p {
+  font-size: 13px;
+  color: #64748b;
+  max-width: 280px;
+  margin: 0;
+}
+
+.login-required .btn {
+  margin-top: 6px;
+}
+/* ===========================
    SCROLLBARS
 =========================== */
 ::-webkit-scrollbar { width: 5px; height: 5px; }

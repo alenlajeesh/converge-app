@@ -15,6 +15,7 @@ function CreateWorkspace({ mode = "create" }) {
   const [status,   setStatus]   = useState("");
   const { user, token } = useAuth();
   const navigate = useNavigate();
+
   const selectFolder = async () => {
     const path = await api.selectFolder();
     if (path) setLocation(path);
@@ -32,9 +33,10 @@ function CreateWorkspace({ mode = "create" }) {
     setLoading(true);
 
     try {
-      let onlineWorkspace;
-
       // ── JOIN ──────────────────────────────
+      // A join code only means anything on the server, so this path
+      // genuinely has to wait on the backend — there's no local
+      // shortcut here.
       if (mode === "join") {
         setStatus("Joining workspace...");
 
@@ -47,74 +49,98 @@ function CreateWorkspace({ mode = "create" }) {
           body: JSON.stringify({ joinCode: joinCode.trim() })
         });
 
-        onlineWorkspace = await res.json();
+        const onlineWorkspace = await res.json();
         if (!res.ok || !onlineWorkspace._id) {
           setError(onlineWorkspace.message || "Invalid join code");
           return;
         }
 
-      // ── CREATE ────────────────────────────
-      } else {
-        setStatus("Creating workspace...");
+        const repoUrl = onlineWorkspace.repoUrl || null;
+        setStatus(
+          repoUrl
+            ? "Cloning repository... this may take a moment"
+            : "Setting up local folder..."
+        );
 
-        const res = await fetch(`${apiUrl}/api/workspace/create`, {
+        const workspace = await api.createWorkspace({
+          name:   onlineWorkspace.name,
+          location,
+          github: repoUrl
+        });
+
+        if (!workspace.success) {
+          setError(workspace.error || "Local setup failed");
+          return;
+        }
+
+        await api.saveWorkspaceId(workspace.path, onlineWorkspace._id);
+
+        navigate(`/workspace/${onlineWorkspace._id}`, {
+          state: {
+            path:        workspace.path,
+            repoPath:    workspace.repoPath,
+            name:        workspace.name,
+            workspaceId: onlineWorkspace._id,
+            joinCode:    onlineWorkspace.joinCode,
+            repoUrl
+          }
+        });
+
+      // ── CREATE ────────────────────────────
+      // Everything the local setup needs (name, folder, github url)
+      // came straight from what you typed — no reason to wait on the
+      // (possibly slow/sleeping) backend before doing it.
+      } else {
+        const repoUrl = github.trim() || null;
+
+        setStatus(
+          repoUrl
+            ? "Cloning repository... this may take a moment"
+            : "Setting up local folder..."
+        );
+
+        const workspace = await api.createWorkspace({ name, location, github: repoUrl });
+
+        if (!workspace.success) {
+          setError(workspace.error || "Local setup failed");
+          return;
+        }
+
+        // 🚀 Open it right away — don't wait on the backend record.
+        navigate(`/workspace/pending`, {
+          state: {
+            path:        workspace.path,
+            repoPath:    workspace.repoPath,
+            name:        workspace.name,
+            workspaceId: null,
+            repoUrl
+          }
+        });
+
+        // 🌐 Create the backend record in the background. If the
+        // server is slow or asleep, the workspace is already open and
+        // usable locally — WorkspaceHome will pick up the real id
+        // once this resolves (needed for join codes / chat / calls).
+        fetch(`${apiUrl}/api/workspace/create`, {
           method:  "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization:  "Bearer " + token
           },
-          body: JSON.stringify({
-            name,
-            repoUrl:   github.trim() || null,
-            localPath: location
+          body: JSON.stringify({ name, repoUrl, localPath: location })
+        })
+          .then((res) => res.json())
+          .then((onlineWorkspace) => {
+            if (onlineWorkspace?._id) {
+              api.saveWorkspaceId(workspace.path, onlineWorkspace._id);
+            }
           })
-        });
-
-        onlineWorkspace = await res.json();
-        if (!res.ok || !onlineWorkspace._id) {
-          setError(onlineWorkspace.message || "Failed to create workspace");
-          return;
-        }
+          .catch((err) => console.error("Background workspace create failed:", err));
       }
-
-      const repoUrl = onlineWorkspace.repoUrl || null;
-	console.log("Location:", location);
-console.log("Repo URL:", repoUrl);
-      setStatus(
-        repoUrl
-          ? "Cloning repository... this may take a moment"
-          : "Setting up local folder..."
-      );
-
-      // ── LOCAL SETUP ───────────────────────
-      const workspace = await api.createWorkspace({
-        name:   onlineWorkspace.name,
-        location,
-        github: repoUrl
-      });
-
-      if (!workspace.success) {
-        setError(workspace.error || "Local setup failed");
-        return;
-      }
-
-      // ✅ Save workspaceId locally so reopening from Dashboard works
-      await api.saveWorkspaceId(workspace.path, onlineWorkspace._id);
-
-      navigate(`/workspace/${onlineWorkspace._id}`, {
-        state: {
-          path:        workspace.path,
-          repoPath:    workspace.repoPath,
-          name:        workspace.name,
-          workspaceId: onlineWorkspace._id,
-          joinCode:    onlineWorkspace.joinCode,
-          repoUrl
-        }
-      });
 
     } catch (err) {
       console.error(err);
-      setError("Server error. Is the backend running?");
+      setError("Something went wrong setting up the workspace locally");
     } finally {
       setLoading(false);
       setStatus("");

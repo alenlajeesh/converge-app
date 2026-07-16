@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import "../styles/menubar.css";
 
 const MENU_ITEMS = ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"];
@@ -45,6 +46,15 @@ function MenuBar() {
     setOpenMenu(null);
   };
 
+  const handleQuit = async () => {
+    setOpenMenu(null);
+    try {
+      await getCurrentWindow().close();
+    } catch (err) {
+      console.error("quit error:", err);
+    }
+  };
+
   return (
     <div className="menubar" ref={wrapperRef}>
       <div className="menubar-left">
@@ -64,6 +74,10 @@ function MenuBar() {
                   <span className="menubar-dropdown-check">
                     {autostartOn ? "✓" : ""}
                   </span>
+                </div>
+                <div className="menubar-dropdown-divider" />
+                <div className="menubar-dropdown-item" onClick={handleQuit}>
+                  <span>Quit</span>
                 </div>
               </div>
             )}

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
 
@@ -20,14 +20,34 @@ import * as api from "../api";
 import "../styles/workspace.css";
 
 const apiUrl = process.env.REACT_APP_API_URL;
+
+function LoginRequired({ feature }) {
+  const navigate = useNavigate();
+  return (
+    <div className="login-required">
+      <div className="login-required-icon">🔒</div>
+      <h3>Log in to use {feature}</h3>
+      <p>This feature needs an account so your team can see it too.</p>
+      <button className="btn btn-primary" onClick={() => navigate("/auth")}>
+        Log In
+      </button>
+    </div>
+  );
+}
+
 function WorkspaceHome() {
   const { state }  = useLocation();
-  const { id }     = useParams();
   const navigate   = useNavigate();
   const { token, user } = useAuth();
-  
-  const workspaceId = id;
-  const rootPath    = state?.repoPath || state?.path;
+
+  const rootPath = state?.repoPath || state?.path;
+
+  // 🖥️ The backend workspace id may not exist yet (offline / just
+  // created / never linked). We start from whatever we already know
+  // locally and fill it in the background once logged in — nothing
+  // here blocks the workspace from opening and being usable.
+  const [workspaceId, setWorkspaceId] = useState(state?.workspaceId || null);
+  const [dbWorkspace, setDbWorkspace] = useState(null);
 
   // ── File tree ────────────────────────────
   const [tree,         setTree]         = useState([]);
@@ -38,9 +58,8 @@ function WorkspaceHome() {
 
   // ── UI state ─────────────────────────────
   const [activeView,   setActiveView]   = useState("explorer");
-  const [showTerminal, setShowTerminal] = useState(true);
+  const [showTerminal, setShowTerminal] = useState(false);
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
-  const [dbWorkspace,  setDbWorkspace]  = useState(null);
   const [contextMenu,  setContextMenu]  = useState({
     visible: false, x: 0, y: 0, node: null
   });
@@ -67,23 +86,60 @@ function WorkspaceHome() {
   const [, setTreeLoading] = useState(false); // eslint-disable-line no-unused-vars
   const [, setSelectedDir] = useState(null);  // eslint-disable-line no-unused-vars
 
-  // ── Fetch workspace from DB ──────────────
-  useEffect(() => {
-    if (!workspaceId || !token) return;
-    fetch(`${apiUrl}/api/workspace/${workspaceId}`, {
-      headers: { Authorization: "Bearer " + token }
-    })
-      .then((r) => r.json())
-      .then((data) => { if (data._id) setDbWorkspace(data); })
-      .catch(console.error);
-  }, [workspaceId, token]);
-
-  const joinCode = dbWorkspace?.joinCode || state?.joinCode;
-
   // ── Redirect if no rootPath ──────────────
   useEffect(() => {
     if (!rootPath) navigate("/", { replace: true });
   }, [rootPath, navigate]);
+
+  const fallbackName = rootPath?.split(/[\\/]/).pop() || "Workspace";
+  const workspaceName = dbWorkspace?.name || state?.name || fallbackName;
+  const joinCode = dbWorkspace?.joinCode || state?.joinCode;
+
+  // ── 🌐 Background: link (or create) the backend record if we're
+  // logged in but don't have a workspace id yet. Never blocks
+  // anything — the editor/tree/terminal are already usable locally.
+  useEffect(() => {
+    if (!token || workspaceId || !rootPath) return;
+    let cancelled = false;
+
+    fetch(`${apiUrl}/api/workspace/link`, {
+      method:  "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization:  "Bearer " + token
+      },
+      body: JSON.stringify({
+        localPath: rootPath,
+        name:      state?.name || fallbackName
+      })
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data._id) return;
+        setWorkspaceId(data._id);
+        setDbWorkspace(data);
+        api.saveWorkspaceId(rootPath, data._id).catch(() => {});
+      })
+      .catch((err) => console.error("Background workspace link failed:", err));
+
+    return () => { cancelled = true; };
+  }, [token, workspaceId, rootPath, state?.name, fallbackName]);
+
+  // ── 🌐 Background: fetch join code / latest info once we do have
+  // an id (e.g. it was already cached locally from a previous open).
+  useEffect(() => {
+    if (!workspaceId || !token || dbWorkspace) return;
+    let cancelled = false;
+
+    fetch(`${apiUrl}/api/workspace/${workspaceId}`, {
+      headers: { Authorization: "Bearer " + token }
+    })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled && data._id) setDbWorkspace(data); })
+      .catch(console.error);
+
+    return () => { cancelled = true; };
+  }, [workspaceId, token, dbWorkspace]);
 
   // ── 🖥️ Notifications ────────────────────────
   useEffect(() => {
@@ -94,14 +150,15 @@ function WorkspaceHome() {
   useEffect(() => {
     const handleNewTerminal = () => {
       setShowTerminal(true);
-      // Give the panel a tick to mount if it was hidden
       setTimeout(() => terminalPanelRef.current?.addTerminal(), 0);
     };
     window.addEventListener("converge:new-terminal", handleNewTerminal);
     return () => window.removeEventListener("converge:new-terminal", handleNewTerminal);
   }, []);
 
-  // ── Workspace socket for call notifications
+  // ── Workspace socket for call/chat notifications ─────────
+  // Only connects once we're logged in AND have a real backend id —
+  // nothing here can block the workspace from being open and usable.
   useEffect(() => {
     if (!token || !workspaceId) return;
 
@@ -115,35 +172,27 @@ function WorkspaceHome() {
       socket.emit("join-workspace", { workspaceId });
     });
 
-    // Show notification when a call becomes active
     socket.on("call-active", ({ participants, workspaceId: wid }) => {
       if (!participants || participants.length === 0) return;
 
       const callType = participants[0]?.callType || "audio";
 
-      // Don't show notification if already in call view
       setActiveView((current) => {
         if (current === "call" || current === "video") return current;
         setCallNotif({ participants, workspaceId: wid, callType });
         return current;
       });
 
-      // 🖥️ Native OS toast if the window isn't focused right now
       notifyIfUnfocused(
         `${callType === "video" ? "Video" : "Voice"} call started`,
         participants.map((p) => p.username).join(", ")
       );
     });
 
-    // Hide notification when call ends
     socket.on("call-ended", () => {
       setCallNotif(null);
     });
 
-    // 🖥️ Chat notifications — this socket already joined the workspace
-    // room via join-workspace, so it receives receive-message broadcasts
-    // the same as ChatView does. Skip our own messages and skip the
-    // toast (but not the OS notification) if Chat is already open.
     socket.on("receive-message", (msg) => {
       if (!msg || !user) return;
       const isOwn = String(msg.userId) === String(user.id);
@@ -336,10 +385,6 @@ function WorkspaceHome() {
     }
   };
 
-  const workspaceName = dbWorkspace?.name
-    || rootPath?.split(/[\\/]/).pop()
-    || "Workspace";
-
   if (!rootPath) {
     return (
       <div style={{
@@ -412,27 +457,27 @@ function WorkspaceHome() {
           )}
 
           {activeView === "chat" && (
-            <ChatView workspaceId={workspaceId} />
+            user
+              ? <ChatView workspaceId={workspaceId} />
+              : <LoginRequired feature="chat" />
           )}
 
           {activeView === "tasks" && (
-            <TaskView workspaceId={workspaceId} />
+            user
+              ? <TaskView workspaceId={workspaceId} />
+              : <LoginRequired feature="tasks" />
           )}
 
           {activeView === "call" && (
-            <CallView
-              socket={socketRef.current}
-              workspaceId={workspaceId}
-              user={user}
-            />
+            user
+              ? <CallView socket={socketRef.current} workspaceId={workspaceId} user={user} />
+              : <LoginRequired feature="voice calls" />
           )}
 
           {activeView === "video" && (
-            <VideoView
-              socket={socketRef.current}
-              workspaceId={workspaceId}
-              user={user}
-            />
+            user
+              ? <VideoView socket={socketRef.current} workspaceId={workspaceId} user={user} />
+              : <LoginRequired feature="video calls" />
           )}
         </div>
 
