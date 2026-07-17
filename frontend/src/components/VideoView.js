@@ -10,20 +10,30 @@ export default function VideoView({ socket, workspaceId, user }) {
   const [connecting,   setConnecting]   = useState(false);
   const [error,        setError]        = useState("");
 
-  // 🖥️ screen share state
-  const [screenSharing,    setScreenSharing]    = useState(false);
-  const [remoteSharing,    setRemoteSharing]    = useState({}); // { socketId: true }
+  // 🖥️ screen share state — camera and screen are independent tracks/
+  // streams, never swapped. remoteScreenStreams holds the actual
+  // MediaStream per remote presenter (not a boolean), so multiple
+  // simultaneous sharers can each get their own tile.
+  const [screenSharing,       setScreenSharing]       = useState(false);
+  const [remoteScreenStreams, setRemoteScreenStreams] = useState({}); // { socketId: MediaStream }
 
-  const localStreamRef = useRef(null);
-  const localVideoRef  = useRef(null);
-  const peersRef       = useRef({});
-  const videoRefs      = useRef({});
+  // 📌 pin state — "self" | a participant socketId | null
+  const [pinnedId, setPinnedId] = useState(null);
+
+  const localStreamRef  = useRef(null); // camera + mic, ALWAYS stays intact
+  const localVideoRef   = useRef(null);
+  const selfScreenVideoRef = useRef(null); // local preview of our own screen share
+  const peersRef        = useRef({});
+  const videoRefs        = useRef({});
   const videoRefCallbacksRef = useRef({});
+  const screenVideoRefs        = useRef({});
+  const screenVideoRefCallbacksRef = useRef({});
   const pendingCandidatesRef = useRef({});
+  const participantsRef = useRef([]); // mirrors `participants` for use inside stable ref callbacks
+  const remoteScreenStreamsRef = useRef({}); // mirrors remoteScreenStreams for the same reason
 
   // 🖥️ screen share refs
   const screenStreamRef = useRef(null);
-  const cameraTrackRef  = useRef(null); // holds the camera track while screen sharing is active
 
   const { speakingMap, startMonitor, stopMonitor, stopAll } = useSpeakingDetection(18);
 
@@ -34,6 +44,8 @@ export default function VideoView({ socket, workspaceId, user }) {
     }
     delete videoRefs.current[socketId];
     delete videoRefCallbacksRef.current[socketId];
+    delete screenVideoRefs.current[socketId];
+    delete screenVideoRefCallbacksRef.current[socketId];
     delete pendingCandidatesRef.current[socketId];
     stopMonitor(socketId);
   }, [stopMonitor]);
@@ -69,6 +81,21 @@ export default function VideoView({ socket, workspaceId, user }) {
 
     peer.on("connect", () => {
       console.log(`✅ PEER CONNECTED (data channel open) -> ${targetSocketId}`);
+
+      // If we're already screen sharing when this peer connects (e.g. we
+      // started sharing, THEN someone new joined), give them the screen
+      // track too. Doing it on "connect" rather than right after peer
+      // creation avoids racing the initial offer/answer.
+      if (screenStreamRef.current) {
+        const track = screenStreamRef.current.getVideoTracks()[0];
+        if (track) {
+          try {
+            peer.addTrack(track, screenStreamRef.current);
+          } catch (err) {
+            console.error("Failed to add screen track to late peer:", err);
+          }
+        }
+      }
     });
 
     if (peer._pc) {
@@ -80,14 +107,32 @@ export default function VideoView({ socket, workspaceId, user }) {
       };
     }
 
+    // 🖥️ A peer can emit "stream" TWICE — once for the camera+mic stream,
+    // once for a screen-share stream, since they're separate MediaStream
+    // objects added via addTrack(track, stream). We tell them apart by
+    // whether the stream carries an audio track: only the camera stream
+    // does (screen share is video-only in this app).
     peer.on("stream", (remoteStream) => {
-      console.log(`🎥 STREAM RECEIVED <- ${targetSocketId}`, remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
-      setParticipants((prev) =>
-        prev.map((p) =>
-          p.socketId === targetSocketId ? { ...p, stream: remoteStream } : p
-        )
+      const isScreen = remoteStream.getAudioTracks().length === 0;
+
+      console.log(
+        `🎥 STREAM RECEIVED <- ${targetSocketId} [${isScreen ? "screen" : "camera"}]`,
+        remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`)
       );
-      startMonitor(targetSocketId, remoteStream);
+
+      if (isScreen) {
+        setRemoteScreenStreams((prev) => ({ ...prev, [targetSocketId]: remoteStream }));
+        if (screenVideoRefs.current[targetSocketId]) {
+          screenVideoRefs.current[targetSocketId].srcObject = remoteStream;
+        }
+      } else {
+        setParticipants((prev) =>
+          prev.map((p) =>
+            p.socketId === targetSocketId ? { ...p, stream: remoteStream } : p
+          )
+        );
+        startMonitor(targetSocketId, remoteStream);
+      }
     });
 
     peer.on("error", (e) => console.error(`❌ Peer error (${targetSocketId}):`, e));
@@ -160,22 +205,26 @@ export default function VideoView({ socket, workspaceId, user }) {
       console.log(`📴 ${username} left`);
       cleanupPeer(socketId);
       setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
-      setRemoteSharing((prev) => {
+      setRemoteScreenStreams((prev) => {
         if (!prev[socketId]) return prev;
         const next = { ...prev };
         delete next[socketId];
         return next;
       });
+      // 📌 clear a stale pin if the pinned person just left
+      setPinnedId((prev) => (prev === socketId ? null : prev));
     };
 
     const onCallEnded = () => leaveCall(false);
 
-    // 🖥️ screen share labels — purely cosmetic, never touches media/peers
-    const onScreenShareStart = ({ socketId }) => {
-      setRemoteSharing((prev) => ({ ...prev, [socketId]: true }));
+    // 🖥️ Presence flag isn't needed — the actual MediaStream arrives via
+    // the peer's "stream" event above. "stop" removes the tile even if
+    // the underlying track hasn't finished tearing down yet.
+    const onScreenShareStart = () => {
+      // no-op, kept for symmetry / possible future "presenting..." badge
     };
     const onScreenShareStop = ({ socketId }) => {
-      setRemoteSharing((prev) => {
+      setRemoteScreenStreams((prev) => {
         if (!prev[socketId]) return prev;
         const next = { ...prev };
         delete next[socketId];
@@ -211,6 +260,8 @@ export default function VideoView({ socket, workspaceId, user }) {
       videoRefCallbacksRef.current[socketId] = (el) => {
         if (el) {
           videoRefs.current[socketId] = el;
+          const p = participantsRef.current.find((pp) => pp.socketId === socketId);
+          if (p?.stream) el.srcObject = p.stream;
         } else {
           delete videoRefs.current[socketId];
         }
@@ -219,7 +270,25 @@ export default function VideoView({ socket, workspaceId, user }) {
     return videoRefCallbacksRef.current[socketId];
   }, []);
 
+  // 🖥️ Same remount-safe pattern as getVideoRefCallback, for remote
+  // screen-share tiles (which mount/unmount as spotlight target changes).
+  const getScreenVideoRefCallback = useCallback((socketId) => {
+    if (!screenVideoRefCallbacksRef.current[socketId]) {
+      screenVideoRefCallbacksRef.current[socketId] = (el) => {
+        if (el) {
+          screenVideoRefs.current[socketId] = el;
+          const stream = remoteScreenStreamsRef.current[socketId];
+          if (stream) el.srcObject = stream;
+        } else {
+          delete screenVideoRefs.current[socketId];
+        }
+      };
+    }
+    return screenVideoRefCallbacksRef.current[socketId];
+  }, []);
+
   useEffect(() => {
+    participantsRef.current = participants;
     participants.forEach((p) => {
       if (p.stream && videoRefs.current[p.socketId]) {
         videoRefs.current[p.socketId].srcObject = p.stream;
@@ -228,10 +297,13 @@ export default function VideoView({ socket, workspaceId, user }) {
   }, [participants]);
 
   useEffect(() => {
-    if (inCall && localVideoRef.current && localStreamRef.current) {
-      localVideoRef.current.srcObject = localStreamRef.current;
-    }
-  }, [inCall]);
+    remoteScreenStreamsRef.current = remoteScreenStreams;
+    Object.entries(remoteScreenStreams).forEach(([socketId, stream]) => {
+      if (screenVideoRefs.current[socketId]) {
+        screenVideoRefs.current[socketId].srcObject = stream;
+      }
+    });
+  }, [remoteScreenStreams]);
 
   const joinCall = async () => {
     setError("");
@@ -247,9 +319,6 @@ export default function VideoView({ socket, workspaceId, user }) {
       const devices  = await navigator.mediaDevices.enumerateDevices();
       const hasAudio = devices.some((d) => d.kind === "audioinput");
       const hasVideo = devices.some((d) => d.kind === "videoinput");
-
-      console.log("🎤 Audio devices:", devices.filter((d) => d.kind === "audioinput"));
-      console.log("📹 Video devices:", devices.filter((d) => d.kind === "videoinput"));
 
       if (!hasAudio && !hasVideo) {
         setError("No camera or microphone detected.");
@@ -282,7 +351,6 @@ export default function VideoView({ socket, workspaceId, user }) {
         }
       }
 
-      console.log("✅ Got stream:", stream.getTracks());
       localStreamRef.current = stream;
       startMonitor("self", stream);
 
@@ -322,21 +390,12 @@ export default function VideoView({ socket, workspaceId, user }) {
     }
   };
 
-  // 🖥️ ── SCREEN SHARE ──────────────────────────────────────
-  // Swaps the outgoing video track on every existing peer connection
-  // via replaceTrack(). This does NOT renegotiate the connection or
-  // touch offer/answer/ICE — same call, different pixels. Audio track
-  // is never touched, so mute/call audio can't be affected by this.
-
-  const swapTrackForAllPeers = (oldTrack, newTrack) => {
-    Object.values(peersRef.current).forEach((peer) => {
-      try {
-        peer.replaceTrack(oldTrack, newTrack, localStreamRef.current);
-      } catch (err) {
-        console.error("replaceTrack failed for a peer (non-fatal):", err);
-      }
-    });
-  };
+  // 🖥️ ── SCREEN SHARE (Meet-style: additive, not a swap) ──────────
+  // The screen track travels as its own MediaStream, added to each peer
+  // via addTrack(track, screenStream). localStreamRef (camera+mic) is
+  // NEVER touched, so the camera keeps flowing the whole time — that's
+  // what lets your own small self-camera tile stay visible while you
+  // present, matching Meet.
 
   const startScreenShare = async () => {
     if (!localStreamRef.current) return;
@@ -354,25 +413,24 @@ export default function VideoView({ socket, workspaceId, user }) {
       const screenTrack = screenStream.getVideoTracks()[0];
       if (!screenTrack) return;
 
-      const camTrack = localStreamRef.current.getVideoTracks()[0];
-      cameraTrackRef.current = camTrack || null;
       screenStreamRef.current = screenStream;
 
-      if (camTrack) {
-        swapTrackForAllPeers(camTrack, screenTrack);
-        localStreamRef.current.removeTrack(camTrack);
-      }
-      localStreamRef.current.addTrack(screenTrack);
+      Object.values(peersRef.current).forEach((peer) => {
+        try {
+          peer.addTrack(screenTrack, screenStream);
+        } catch (err) {
+          console.error("addTrack (screen) failed for a peer (non-fatal):", err);
+        }
+      });
 
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = localStreamRef.current;
+      if (selfScreenVideoRef.current) {
+        selfScreenVideoRef.current.srcObject = screenStream;
       }
 
       setScreenSharing(true);
       socket.emit("screen-share-start", { workspaceId });
 
-      // If the user stops sharing via the browser/OS "Stop sharing" bar
-      // instead of our button, revert automatically.
+      // Browser/OS "Stop sharing" bar
       screenTrack.onended = () => {
         stopScreenShare();
       };
@@ -389,35 +447,23 @@ export default function VideoView({ socket, workspaceId, user }) {
 
     const screenTrack = screenStreamRef.current.getVideoTracks()[0];
 
-    (async () => {
+    Object.values(peersRef.current).forEach((peer) => {
       try {
-        let camTrack = cameraTrackRef.current;
-        if (!camTrack || camTrack.readyState === "ended") {
-          const freshStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          camTrack = freshStream.getVideoTracks()[0];
-        }
-
-        if (camTrack) {
-          if (screenTrack) swapTrackForAllPeers(screenTrack, camTrack);
-          if (screenTrack) localStreamRef.current.removeTrack(screenTrack);
-          localStreamRef.current.addTrack(camTrack);
-          cameraTrackRef.current = camTrack;
-          camTrack.enabled = !videoOff;
-        }
-
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = localStreamRef.current;
-        }
+        if (screenTrack) peer.removeTrack(screenTrack, screenStreamRef.current);
       } catch (err) {
-        console.error("Failed to restore camera after screen share:", err);
-      } finally {
-        if (screenTrack) screenTrack.stop();
-        screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-        screenStreamRef.current = null;
-        setScreenSharing(false);
-        socket.emit("screen-share-stop", { workspaceId });
+        console.error("removeTrack (screen) failed for a peer (non-fatal):", err);
       }
-    })();
+    });
+
+    if (selfScreenVideoRef.current) {
+      selfScreenVideoRef.current.srcObject = null;
+    }
+
+    if (screenTrack) screenTrack.stop();
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    setScreenSharing(false);
+    socket.emit("screen-share-stop", { workspaceId });
   };
 
   const toggleScreenShare = () => {
@@ -436,6 +482,7 @@ export default function VideoView({ socket, workspaceId, user }) {
       localStreamRef.current = null;
     }
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (selfScreenVideoRef.current) selfScreenVideoRef.current.srcObject = null;
     Object.keys(peersRef.current).forEach(cleanupPeer);
     peersRef.current = {};
     stopAll();
@@ -443,7 +490,8 @@ export default function VideoView({ socket, workspaceId, user }) {
     setParticipants([]);
     setMuted(false);
     setVideoOff(false);
-    setRemoteSharing({});
+    setRemoteScreenStreams({});
+    setPinnedId(null);
     if (notify && socket) socket.emit("call-leave", { workspaceId });
   }, [socket, workspaceId, cleanupPeer, stopAll]);
 
@@ -461,7 +509,113 @@ export default function VideoView({ socket, workspaceId, user }) {
 
   useEffect(() => { return () => leaveCall(true); }, [leaveCall]);
 
+  const setLocalVideoRef = useCallback((el) => {
+    localVideoRef.current = el;
+    if (el && localStreamRef.current) {
+      el.srcObject = localStreamRef.current;
+    }
+  }, []);
+
+  const setSelfScreenVideoRef = useCallback((el) => {
+    selfScreenVideoRef.current = el;
+    if (el && screenStreamRef.current) {
+      el.srcObject = screenStreamRef.current;
+    }
+  }, []);
+
+  // 📌 toggle pin — clicking an already-pinned tile unpins it
+  const togglePin = useCallback((id) => {
+    setPinnedId((prev) => (prev === id ? null : id));
+  }, []);
+
   const selfSpeaking = !!speakingMap.self && !muted;
+
+  const remoteSharerIds = Object.keys(remoteScreenStreams);
+
+  // 📌 Pin wins if the pinned target is still in the call. A pin shows
+  // that person's CAMERA (not necessarily a screen) — this is different
+  // from the auto screen-share spotlight below.
+  const pinnedStillHere =
+    pinnedId != null &&
+    (pinnedId === "self" || participants.some((p) => p.socketId === pinnedId));
+
+  // Spotlight resolution order: pin > local screen share > first remote
+  // screen share > nothing (plain grid).
+  const spotlightMode = pinnedStillHere
+    ? "pin"
+    : screenSharing
+    ? "self-screen"
+    : remoteSharerIds.length > 0
+    ? "remote-screen"
+    : null;
+
+  const primarySharerId = spotlightMode === "remote-screen" ? remoteSharerIds[0] : null;
+
+  const renderSelfTile = (small = false) => (
+    <div
+      className={`video-tile self ${selfSpeaking ? "speaking" : ""} ${pinnedId === "self" ? "pinned" : ""}`}
+      onClick={() => togglePin("self")}
+    >
+      <video
+        ref={setLocalVideoRef}
+        autoPlay
+        muted
+        playsInline
+        className={videoOff ? "video-off" : ""}
+      />
+      {videoOff && (
+        <div className={`video-avatar ${small ? "video-avatar-sm" : ""}`}>
+          {user?.username?.[0]?.toUpperCase()}
+        </div>
+      )}
+      <div className="video-tile-name">
+        {user?.username} (you){muted && " 🔇"}
+      </div>
+      {pinnedId === "self" && <span className="pin-badge">📌</span>}
+    </div>
+  );
+
+  const renderSelfScreenTile = () => (
+    <div className="video-tile self-screen">
+      <video ref={setSelfScreenVideoRef} autoPlay muted playsInline />
+      <div className="video-tile-name">{user?.username} 🖥️ (your screen)</div>
+    </div>
+  );
+
+  const renderRemoteScreenTile = (socketId, username) => (
+    <div key={`${socketId}-screen`} className="video-tile remote-screen">
+      <video ref={getScreenVideoRefCallback(socketId)} autoPlay playsInline />
+      <div className="video-tile-name">{username} 🖥️</div>
+    </div>
+  );
+
+  const renderParticipantTile = (p, small = false) => {
+    const isSpeaking = !!speakingMap[p.socketId];
+    const isPinned = pinnedId === p.socketId;
+    return (
+      <div
+        key={p.socketId}
+        className={`video-tile ${isSpeaking ? "speaking" : ""} ${isPinned ? "pinned" : ""}`}
+        onClick={() => togglePin(p.socketId)}
+      >
+        {p.stream ? (
+          <video
+            ref={getVideoRefCallback(p.socketId)}
+            autoPlay
+            playsInline
+          />
+        ) : (
+          <div className={`video-avatar ${small ? "video-avatar-sm" : ""}`}>
+            {p.username?.[0]?.toUpperCase()}
+          </div>
+        )}
+        <div className="video-tile-name">
+          {p.username}{remoteScreenStreams[p.socketId] && " 🖥️"}
+        </div>
+        {isPinned && <span className="pin-badge">📌</span>}
+      </div>
+    );
+  };
 
   return (
     <div className="call-container">
@@ -498,50 +652,49 @@ export default function VideoView({ socket, workspaceId, user }) {
           </div>
         ) : (
           <>
-            <div className={`video-grid participants-${participants.length + 1}`}>
-              <div className={`video-tile self ${selfSpeaking ? "speaking" : ""}`}>
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className={videoOff && !screenSharing ? "video-off" : ""}
-                />
-                {videoOff && !screenSharing && (
-                  <div className="video-avatar">
-                    {user?.username?.[0]?.toUpperCase()}
-                  </div>
-                )}
-                <div className="video-tile-name">
-                  {user?.username} (you){muted && " 🔇"}{screenSharing && " 🖥️"}
+            {spotlightMode ? (
+              <div className="meet-stage">
+                <div className="meet-spotlight">
+                  {spotlightMode === "pin" && pinnedId === "self" && renderSelfTile(false)}
+                  {spotlightMode === "pin" && pinnedId !== "self" &&
+                    renderParticipantTile(
+                      participants.find((p) => p.socketId === pinnedId),
+                      false
+                    )}
+                  {spotlightMode === "self-screen" && renderSelfScreenTile()}
+                  {spotlightMode === "remote-screen" &&
+                    renderRemoteScreenTile(
+                      primarySharerId,
+                      participants.find((p) => p.socketId === primarySharerId)?.username
+                    )}
+                </div>
+
+                <div className="meet-filmstrip">
+                  {/* Self camera ALWAYS shows here, unless self is the
+                      one currently pinned into the spotlight above. */}
+                  {!(spotlightMode === "pin" && pinnedId === "self") && renderSelfTile(true)}
+
+                  {/* Any active screen share NOT currently in the
+                      spotlight still gets its own tile — fixes the case
+                      where two people share at once, or someone shares
+                      while a different person is pinned. */}
+                  {remoteSharerIds
+                    .filter((id) => id !== primarySharerId)
+                    .map((id) =>
+                      renderRemoteScreenTile(id, participants.find((p) => p.socketId === id)?.username)
+                    )}
+
+                  {participants
+                    .filter((p) => !(spotlightMode === "pin" && p.socketId === pinnedId))
+                    .map((p) => renderParticipantTile(p, true))}
                 </div>
               </div>
-
-              {participants.map((p) => {
-                const isSpeaking = !!speakingMap[p.socketId];
-                return (
-                  <div
-                    key={p.socketId}
-                    className={`video-tile ${isSpeaking ? "speaking" : ""}`}
-                  >
-                    {p.stream ? (
-                      <video
-                        ref={getVideoRefCallback(p.socketId)}
-                        autoPlay
-                        playsInline
-                      />
-                    ) : (
-                      <div className="video-avatar">
-                        {p.username?.[0]?.toUpperCase()}
-                      </div>
-                    )}
-                    <div className="video-tile-name">
-                      {p.username}{remoteSharing[p.socketId] && " 🖥️"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            ) : (
+              <div className={`video-grid participants-${participants.length + 1}`}>
+                {renderSelfTile(false)}
+                {participants.map((p) => renderParticipantTile(p, false))}
+              </div>
+            )}
 
             <div className="call-controls">
               <button
@@ -554,7 +707,6 @@ export default function VideoView({ socket, workspaceId, user }) {
               <button
                 className={`call-ctrl-btn ${videoOff ? "danger" : ""}`}
                 onClick={toggleVideo}
-                disabled={screenSharing}
               >
                 {videoOff ? "📵" : "📹"}
                 <span>{videoOff ? "Start Video" : "Stop Video"}</span>
@@ -566,6 +718,15 @@ export default function VideoView({ socket, workspaceId, user }) {
                 🖥️
                 <span>{screenSharing ? "Stop Sharing" : "Share Screen"}</span>
               </button>
+              {pinnedId && (
+                <button
+                  className="call-ctrl-btn"
+                  onClick={() => setPinnedId(null)}
+                >
+                  📌
+                  <span>Unpin</span>
+                </button>
+              )}
               <button
                 className="call-ctrl-btn end"
                 onClick={() => leaveCall(true)}
