@@ -9,16 +9,19 @@ export default function CallView({ socket, workspaceId, user }) {
   const [connecting,   setConnecting]   = useState(false);
   const [error,        setError]        = useState("");
 
-  // 🖥️ screen share state
+  // screen share state
   const [screenSharing,       setScreenSharing]       = useState(false);
   const [screenShareStreams,  setScreenShareStreams]  = useState({}); // { socketId: MediaStream }
+
+  // pin state -- "self" | a participant socketId | null
+  const [pinnedId, setPinnedId] = useState(null);
 
   const localStreamRef = useRef(null);
   const peersRef       = useRef({});
   const audioRefs      = useRef({});
   const pendingCandidatesRef = useRef({});
 
-  // 🖥️ screen share refs
+  // screen share refs
   const screenStreamRef        = useRef(null);
   const localScreenVideoRef    = useRef(null);
   const screenVideoRefs        = useRef({});
@@ -44,7 +47,7 @@ export default function CallView({ socket, workspaceId, user }) {
   const createPeer = useCallback((targetSocketId, initiator, stream) => {
     const SimplePeer = require("simple-peer");
 
-    console.log(`🔧 Creating peer -> ${targetSocketId} (initiator: ${initiator}, tracks: ${stream?.getTracks().map(t => t.kind).join(",")})`);
+    console.log(`Creating peer -> ${targetSocketId} (initiator: ${initiator}, tracks: ${stream?.getTracks().map(t => t.kind).join(",")})`);
 
     const peer = new SimplePeer({
       initiator,
@@ -60,10 +63,8 @@ export default function CallView({ socket, workspaceId, user }) {
 
     peer.on("signal", (signalData) => {
       if (signalData.type === "offer") {
-        console.log(`📤 Sending OFFER -> ${targetSocketId}`);
         socket.emit("call-offer", { targetSocketId, offer: signalData, callType: "audio" });
       } else if (signalData.type === "answer") {
-        console.log(`📤 Sending ANSWER -> ${targetSocketId}`);
         socket.emit("call-answer", { targetSocketId, answer: signalData });
       } else {
         socket.emit("call-ice-candidate", { targetSocketId, candidate: signalData });
@@ -71,19 +72,34 @@ export default function CallView({ socket, workspaceId, user }) {
     });
 
     peer.on("connect", () => {
-      console.log(`✅ PEER CONNECTED (data channel open) -> ${targetSocketId}`);
+      console.log(`PEER CONNECTED (data channel open) -> ${targetSocketId}`);
+
+      // If we're already screen sharing when this peer connects, give
+      // them the screen track too (mirrors the equivalent fix in
+      // VideoView.js) -- otherwise a late joiner never sees an
+      // in-progress share until the next toggle.
+      if (screenStreamRef.current) {
+        const track = screenStreamRef.current.getVideoTracks()[0];
+        if (track && typeof peer.addTrack === "function") {
+          try {
+            peer.addTrack(track, screenStreamRef.current);
+          } catch (err) {
+            console.error("Failed to add screen track to late peer:", err);
+          }
+        }
+      }
     });
 
     if (peer._pc) {
       peer._pc.oniceconnectionstatechange = () => {
-        console.log(`🧊 ICE state (${targetSocketId}):`, peer._pc.iceConnectionState);
+        console.log(`ICE state (${targetSocketId}):`, peer._pc.iceConnectionState);
       };
       peer._pc.onconnectionstatechange = () => {
-        console.log(`🔗 Connection state (${targetSocketId}):`, peer._pc.connectionState);
+        console.log(`Connection state (${targetSocketId}):`, peer._pc.connectionState);
       };
     }
 
-    // 🖥️ A screen-share track arrives as its OWN MediaStream (video-only,
+    // A screen-share track arrives as its OWN MediaStream (video-only,
     // no audio) since we add it via addTrack(track, newStream) rather
     // than mixing it into the original audio call stream. We branch on
     // track kind so the original audio-call path below is completely
@@ -92,7 +108,7 @@ export default function CallView({ socket, workspaceId, user }) {
       const hasAudio = remoteStream.getAudioTracks().length > 0;
       const hasVideo = remoteStream.getVideoTracks().length > 0;
 
-      console.log(`🎧 STREAM RECEIVED <- ${targetSocketId}`, remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
+      console.log(`STREAM RECEIVED <- ${targetSocketId}`, remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
 
       if (hasAudio) {
         let audio = audioRefs.current[targetSocketId];
@@ -110,9 +126,9 @@ export default function CallView({ socket, workspaceId, user }) {
       }
     });
 
-    peer.on("error", (e) => console.error(`❌ Peer error (${targetSocketId}):`, e));
+    peer.on("error", (e) => console.error(`Peer error (${targetSocketId}):`, e));
     peer.on("close", () => {
-      console.log(`📴 Peer closed -> ${targetSocketId}`);
+      console.log(`Peer closed -> ${targetSocketId}`);
       cleanupPeer(targetSocketId);
     });
 
@@ -177,7 +193,7 @@ export default function CallView({ socket, workspaceId, user }) {
     };
 
     const onUserLeft = ({ socketId, username }) => {
-      console.log(`📴 ${username} left`);
+      console.log(`${username} left`);
       cleanupPeer(socketId);
       setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
       setScreenShareStreams((prev) => {
@@ -186,11 +202,13 @@ export default function CallView({ socket, workspaceId, user }) {
         delete next[socketId];
         return next;
       });
+      // clear a stale pin if the pinned person just left
+      setPinnedId((prev) => (prev === socketId ? null : prev));
     };
 
     const onCallEnded = () => leaveCall(false);
 
-    // 🖥️ screen-share-stop is our signal to clear a stale tile — the
+    // screen-share-stop is our signal to clear a stale tile -- the
     // renegotiated track removal doesn't reliably fire a UI-visible
     // event on its own, so we rely on this explicit message instead.
     const onScreenShareStop = ({ socketId }) => {
@@ -249,11 +267,15 @@ export default function CallView({ socket, workspaceId, user }) {
     });
   }, [screenShareStreams]);
 
-  useEffect(() => {
-    if (screenSharing && localScreenVideoRef.current && screenStreamRef.current) {
-      localScreenVideoRef.current.srcObject = screenStreamRef.current;
+  // Attaches the screen stream the instant the <video> mounts, rather
+  // than relying on an effect keyed to `screenSharing` -- mirrors the
+  // fix in VideoView.js.
+  const setLocalScreenVideoRef = useCallback((el) => {
+    localScreenVideoRef.current = el;
+    if (el && screenStreamRef.current) {
+      el.srcObject = screenStreamRef.current;
     }
-  }, [screenSharing]);
+  }, []);
 
   const joinCall = async () => {
     setError("");
@@ -268,7 +290,6 @@ export default function CallView({ socket, workspaceId, user }) {
 
       const devices  = await navigator.mediaDevices.enumerateDevices();
       const hasAudio = devices.some((d) => d.kind === "audioinput");
-      console.log("🎤 Audio devices:", devices.filter((d) => d.kind === "audioinput"));
 
       if (!hasAudio) {
         setError("No microphone detected. Please connect a microphone.");
@@ -281,7 +302,6 @@ export default function CallView({ socket, workspaceId, user }) {
         video: false
       });
 
-      console.log("✅ Got audio stream:", stream.getTracks());
       localStreamRef.current = stream;
       startMonitor("self", stream);
       setInCall(true);
@@ -307,9 +327,9 @@ export default function CallView({ socket, workspaceId, user }) {
     }
   };
 
-  // 🖥️ ── SCREEN SHARE ──────────────────────────────────────
+  // -- SCREEN SHARE --
   // Unlike VideoView (which replaces an existing video track), this
-  // call has no video track to replace — so we ADD one via
+  // call has no video track to replace -- so we ADD one via
   // peer.addTrack(). That triggers a one-time renegotiation per peer,
   // which flows through the exact same call-offer/call-answer/
   // call-ice-candidate handlers already wired up above. The original
@@ -336,7 +356,7 @@ export default function CallView({ socket, workspaceId, user }) {
           if (typeof peer.addTrack === "function") {
             peer.addTrack(track, stream);
           } else {
-            console.warn("This simple-peer version doesn't support addTrack — screen share skipped for a peer.");
+            console.warn("This simple-peer version doesn't support addTrack -- screen share skipped for a peer.");
           }
         } catch (err) {
           console.error("addTrack failed for a peer (non-fatal):", err);
@@ -398,6 +418,7 @@ export default function CallView({ socket, workspaceId, user }) {
     setParticipants([]);
     setMuted(false);
     setScreenShareStreams({});
+    setPinnedId(null);
     if (notify && socket) socket.emit("call-leave", { workspaceId });
   }, [socket, workspaceId, cleanupPeer, stopAll]);
 
@@ -409,8 +430,37 @@ export default function CallView({ socket, workspaceId, user }) {
 
   useEffect(() => { return () => leaveCall(true); }, [leaveCall]);
 
+  // toggle pin -- clicking an already-pinned tile unpins it
+  const togglePin = useCallback((id) => {
+    setPinnedId((prev) => (prev === id ? null : id));
+  }, []);
+
   const selfSpeaking = !!speakingMap.self && !muted;
-  const hasAnyScreenShare = screenSharing || Object.keys(screenShareStreams).length > 0;
+
+  const shareEntries = Object.keys(screenShareStreams);
+
+  // Pin wins over the auto screen-share spotlight. A pin shows an
+  // avatar tile for that person (there's no camera in an audio call),
+  // but any active screen shares still get their own tiles in the
+  // filmstrip regardless of what's pinned.
+  const pinnedStillHere =
+    pinnedId != null &&
+    (pinnedId === "self" || participants.some((p) => p.socketId === pinnedId));
+
+  const spotlightMode = pinnedStillHere
+    ? "pin"
+    : screenSharing
+    ? "self-screen"
+    : shareEntries.length > 0
+    ? "remote-screen"
+    : null;
+
+  const primarySharerId = spotlightMode === "remote-screen" ? shareEntries[0] : null;
+
+  // Every share not currently occupying the spotlight still needs a tile
+  // in the filmstrip -- covers both "pinned to a person while someone
+  // shares" and "two people sharing at once".
+  const filmstripShareIds = shareEntries.filter((id) => id !== primarySharerId);
 
   return (
     <div className="call-container">
@@ -445,40 +495,155 @@ export default function CallView({ socket, workspaceId, user }) {
               {connecting ? "Connecting..." : "Join Call"}
             </button>
           </div>
-        ) : (
+        ) : spotlightMode ? (
           <>
-            {/* 🖥️ Screen share tiles — only rendered when someone is
-                actually sharing. The rest of the audio-only UI below is
-                completely unchanged. */}
-            {hasAnyScreenShare && (
-              <div className="screen-share-panel">
-                {screenSharing && (
-                  <div className="screen-share-tile">
-                    <video ref={localScreenVideoRef} autoPlay muted playsInline />
-                    <div className="screen-share-label">You are sharing 🖥️</div>
+            {/* Meet-style spotlight -- active while someone is sharing OR
+                someone is pinned. The plain avatar-circle layout below
+                is untouched otherwise. */}
+            <div className="meet-stage">
+              <div className="meet-spotlight">
+                {spotlightMode === "pin" && pinnedId === "self" && (
+                  <div
+                    className={`video-tile audio-tile self pinned ${selfSpeaking ? "speaking" : ""}`}
+                    onClick={() => togglePin("self")}
+                  >
+                    <div className="video-avatar">{user?.username?.[0]?.toUpperCase()}</div>
+                    <div className="video-tile-name">{user?.username} (you){muted && " 🔇"}</div>
+                    <span className="pin-badge">📌</span>
                   </div>
                 )}
-                {Object.keys(screenShareStreams).map((socketId) => {
-                  const p = participants.find((pt) => pt.socketId === socketId);
+
+                {spotlightMode === "pin" && pinnedId !== "self" && (() => {
+                  const p = participants.find((pp) => pp.socketId === pinnedId);
+                  const isSpeaking = !!speakingMap[pinnedId];
                   return (
-                    <div key={socketId} className="screen-share-tile">
-                      <video ref={getScreenVideoRefCallback(socketId)} autoPlay playsInline />
-                      <div className="screen-share-label">
-                        {p?.username || "Someone"} is sharing 🖥️
+                    <div
+                      className={`video-tile audio-tile pinned ${isSpeaking ? "speaking" : ""}`}
+                      onClick={() => togglePin(pinnedId)}
+                    >
+                      <div className="video-avatar">{p?.username?.[0]?.toUpperCase()}</div>
+                      <div className="video-tile-name">
+                        {p?.username}{screenShareStreams[pinnedId] && " 🖥️"}
                       </div>
+                      <span className="pin-badge">📌</span>
                     </div>
                   );
-                })}
-              </div>
-            )}
+                })()}
 
+                {spotlightMode === "self-screen" && (
+                  <div className="video-tile self-screen">
+                    <video ref={setLocalScreenVideoRef} autoPlay muted playsInline />
+                    <div className="video-tile-name">You are sharing 🖥️</div>
+                  </div>
+                )}
+
+                {spotlightMode === "remote-screen" && (
+                  <div className="video-tile remote-screen">
+                    <video ref={getScreenVideoRefCallback(primarySharerId)} autoPlay playsInline />
+                    <div className="video-tile-name">
+                      {participants.find((p) => p.socketId === primarySharerId)?.username || "Someone"} is sharing 🖥️
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="meet-filmstrip">
+                {/* Self avatar ALWAYS shows here, unless self is the one
+                    currently pinned into the spotlight above. */}
+                {!(spotlightMode === "pin" && pinnedId === "self") && (
+                  <div
+                    className={`video-tile audio-tile ${selfSpeaking ? "speaking" : ""} ${pinnedId === "self" ? "pinned" : ""}`}
+                    onClick={() => togglePin("self")}
+                  >
+                    <div className="video-avatar video-avatar-sm">
+                      {user?.username?.[0]?.toUpperCase()}
+                    </div>
+                    <div className="video-tile-name">
+                      {user?.username} (you){muted && " 🔇"}
+                    </div>
+                  </div>
+                )}
+
+                {/* Any active screen share not currently in the spotlight
+                    (e.g. two people sharing at once, or pinned-to-a-person
+                    while a share is also live). */}
+                {filmstripShareIds.map((id) => (
+                  <div key={id} className="video-tile remote-screen">
+                    <video ref={getScreenVideoRefCallback(id)} autoPlay playsInline />
+                    <div className="video-tile-name">
+                      {participants.find((p) => p.socketId === id)?.username || "Someone"} 🖥️
+                    </div>
+                  </div>
+                ))}
+
+                {participants
+                  .filter((p) => !(spotlightMode === "pin" && p.socketId === pinnedId))
+                  .map((p) => {
+                    const isSpeaking = !!speakingMap[p.socketId];
+                    const isPinned = pinnedId === p.socketId;
+                    return (
+                      <div
+                        key={p.socketId}
+                        className={`video-tile audio-tile ${isSpeaking ? "speaking" : ""} ${isPinned ? "pinned" : ""}`}
+                        onClick={() => togglePin(p.socketId)}
+                      >
+                        <div className="video-avatar video-avatar-sm">
+                          {p.username?.[0]?.toUpperCase()}
+                        </div>
+                        <div className="video-tile-name">
+                          {p.username}{screenShareStreams[p.socketId] && " 🖥️"}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div className="call-controls">
+              <button
+                className={`call-ctrl-btn ${muted ? "danger" : ""}`}
+                onClick={toggleMute}
+              >
+                {muted ? "🔇" : "🎙️"}
+                <span>{muted ? "Unmute" : "Mute"}</span>
+              </button>
+              <button
+                className={`call-ctrl-btn ${screenSharing ? "active" : ""}`}
+                onClick={toggleScreenShare}
+              >
+                🖥️
+                <span>{screenSharing ? "Stop Sharing" : "Share Screen"}</span>
+              </button>
+              {pinnedId && (
+                <button
+                  className="call-ctrl-btn"
+                  onClick={() => setPinnedId(null)}
+                >
+                  📌
+                  <span>Unpin</span>
+                </button>
+              )}
+              <button
+                className="call-ctrl-btn end"
+                onClick={() => leaveCall(true)}
+              >
+                📴
+                <span>Leave</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
             <div className="call-participants">
-              <div className="call-participant self">
+              <div
+                className={`call-participant self ${pinnedId === "self" ? "pinned" : ""}`}
+                onClick={() => togglePin("self")}
+              >
                 <div className={`call-avatar ${muted ? "muted" : "active"} ${selfSpeaking ? "speaking" : ""}`}>
                   {user?.username?.[0]?.toUpperCase()}
                 </div>
                 <span className="call-participant-name">
-                  {user?.username} (you){screenSharing && " 🖥️"}
+                  {user?.username} (you)
                 </span>
                 <span className="call-participant-status">
                   {muted ? "🔇" : "🎙️"}
@@ -487,13 +652,18 @@ export default function CallView({ socket, workspaceId, user }) {
 
               {participants.map((p) => {
                 const isSpeaking = !!speakingMap[p.socketId];
+                const isPinned = pinnedId === p.socketId;
                 return (
-                  <div key={p.socketId} className="call-participant">
+                  <div
+                    key={p.socketId}
+                    className={`call-participant ${isPinned ? "pinned" : ""}`}
+                    onClick={() => togglePin(p.socketId)}
+                  >
                     <div className={`call-avatar active ${isSpeaking ? "speaking" : ""}`}>
                       {p.username?.[0]?.toUpperCase()}
                     </div>
                     <span className="call-participant-name">
-                      {p.username}{screenShareStreams[p.socketId] && " 🖥️"}
+                      {p.username}
                     </span>
                     <span className="call-participant-status">🎙️</span>
                   </div>
@@ -516,6 +686,15 @@ export default function CallView({ socket, workspaceId, user }) {
                 🖥️
                 <span>{screenSharing ? "Stop Sharing" : "Share Screen"}</span>
               </button>
+              {pinnedId && (
+                <button
+                  className="call-ctrl-btn"
+                  onClick={() => setPinnedId(null)}
+                >
+                  📌
+                  <span>Unpin</span>
+                </button>
+              )}
               <button
                 className="call-ctrl-btn end"
                 onClick={() => leaveCall(true)}

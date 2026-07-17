@@ -1,6 +1,7 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
+import TaskFormModal from "./TaskFormModal";
+import TaskDetailModal from "./TaskDetailModal";
 import "../styles/taskview.css";
 
 const STATUSES = ["pending", "inprogress", "done"];
@@ -27,24 +28,20 @@ const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
 
 export default function TaskView({ workspaceId }) {
   const { user, token } = useAuth();
-
-  const [tasks,    setTasks]    = useState([]);
-  const [members,  setMembers]  = useState([]);
-  const [loading,  setLoading]  = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [error,    setError]    = useState("");
   const apiUrl = process.env.REACT_APP_API_URL;
-  const [filterMember,   setFilterMember]   = useState("all");
+
+  const [tasks,   setTasks]   = useState([]);
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const [scope,          setScope]          = useState("mine"); // "mine" | "all"
+  const [searchQuery,    setSearchQuery]    = useState("");
   const [filterPriority, setFilterPriority] = useState("all");
   const [sortBy,         setSortBy]         = useState("newest");
-  const [searchQuery,    setSearchQuery]    = useState("");
 
-  const [form, setForm] = useState({
-    title:        "",
-    description:  "",
-    assignedToId: "",
-    priority:     "medium"
-  });
+  const [showForm,    setShowForm]    = useState(false); // create/edit modal
+  const [editingTask, setEditingTask] = useState(null);  // null = create mode
+  const [detailTask,  setDetailTask]  = useState(null);  // task open in detail modal
 
   const headers = useMemo(() => ({
     "Content-Type": "application/json",
@@ -63,7 +60,7 @@ export default function TaskView({ workspaceId }) {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, token, headers]);
+  }, [workspaceId, token, headers, apiUrl]);
 
   const loadMembers = useCallback(async () => {
     if (!workspaceId || !token) return;
@@ -74,45 +71,47 @@ export default function TaskView({ workspaceId }) {
     } catch (e) {
       console.error("loadMembers:", e);
     }
-  }, [workspaceId, token, headers]);
+  }, [workspaceId, token, headers, apiUrl]);
 
   useEffect(() => {
     loadTasks();
     loadMembers();
   }, [loadTasks, loadMembers]);
 
-  const handleCreate = async () => {
-    setError("");
-    if (!form.title.trim()) { setError("Title is required"); return; }
+  // ── create / edit (shared modal) ──────────────
+  const openCreate = () => { setEditingTask(null); setShowForm(true); };
+  const openEdit = (task) => { setDetailTask(null); setEditingTask(task); setShowForm(true); };
 
-    setCreating(true);
-    try {
-      const r = await fetch(`${apiUrl}/api/tasks`, {
-        method:  "POST",
-        headers,
-        body:    JSON.stringify({ ...form, workspaceId })
-      });
-      const data = await r.json();
-      if (!r.ok) { setError(data.message || "Failed to create task"); return; }
-      setTasks((prev) => [data, ...prev]);
-      setForm({ title: "", description: "", assignedToId: "", priority: "medium" });
-    } catch (e) {
-      setError("Server error");
-    } finally {
-      setCreating(false);
-    }
+  const handleFormSubmit = async (formValues) => {
+    const isEdit = Boolean(editingTask);
+    const url    = isEdit ? `${apiUrl}/api/tasks/${editingTask._id}` : `${apiUrl}/api/tasks`;
+    const method = isEdit ? "PATCH" : "POST";
+    const body   = isEdit ? formValues : { ...formValues, workspaceId };
+
+    const r = await fetch(url, { method, headers, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) return { error: data.message || "Something went wrong" };
+
+    setTasks((prev) =>
+      isEdit ? prev.map((t) => (t._id === data._id ? data : t)) : [data, ...prev]
+    );
+    setShowForm(false);
+    setEditingTask(null);
+    return { error: null };
   };
 
+  // ── status / delete ───────────────────────────
   const handleStatusChange = async (task, newStatus) => {
     try {
       const r = await fetch(`${apiUrl}/api/tasks/${task._id}/status`, {
-        method:  "PATCH",
+        method: "PATCH",
         headers,
-        body:    JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus })
       });
       const data = await r.json();
       if (!r.ok) return;
-      setTasks((prev) => prev.map((t) => t._id === data._id ? data : t));
+      setTasks((prev) => prev.map((t) => (t._id === data._id ? data : t)));
+      setDetailTask((prev) => (prev && prev._id === data._id ? data : prev));
     } catch (e) {
       console.error("updateStatus:", e);
     }
@@ -120,31 +119,46 @@ export default function TaskView({ workspaceId }) {
 
   const handleDelete = async (taskId) => {
     try {
-      const r = await fetch(`${apiUrl}/api/tasks/${taskId}`, {
-        method: "DELETE",
-        headers
-      });
+      const r = await fetch(`${apiUrl}/api/tasks/${taskId}`, { method: "DELETE", headers });
       if (!r.ok) return;
       setTasks((prev) => prev.filter((t) => t._id !== taskId));
+      setDetailTask((prev) => (prev && prev._id === taskId ? null : prev));
     } catch (e) {
       console.error("deleteTask:", e);
     }
   };
 
+  // ── comments (used by detail modal) ───────────
+  const handleCommentAdded = (taskId, comment) => {
+    setTasks((prev) =>
+      prev.map((t) => (t._id === taskId ? { ...t, comments: [...(t.comments || []), comment] } : t))
+    );
+    setDetailTask((prev) =>
+      prev && prev._id === taskId ? { ...prev, comments: [...(prev.comments || []), comment] } : prev
+    );
+  };
+
+  const isCreator = (task) => task.assignedBy?.toString() === user?._id?.toString();
+
+  // ── derived lists ──────────────────────────────
+  const scopedTasks = useMemo(() => {
+    if (scope === "mine") {
+      return tasks.filter((t) => t.assignedToUsername === user?.username);
+    }
+    return tasks;
+  }, [tasks, scope, user]);
+
   const filteredTasks = useMemo(() => {
-    let result = [...tasks];
+    let result = [...scopedTasks];
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter((t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.description?.toLowerCase().includes(q) ||
-        t.assignedToUsername?.toLowerCase().includes(q)
+      result = result.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.description?.toLowerCase().includes(q) ||
+          t.assignedToUsername?.toLowerCase().includes(q)
       );
-    }
-
-    if (filterMember !== "all") {
-      result = result.filter((t) => t.assignedToUsername === filterMember);
     }
 
     if (filterPriority !== "all") {
@@ -160,29 +174,19 @@ export default function TaskView({ workspaceId }) {
     });
 
     return result;
-  }, [tasks, searchQuery, filterMember, filterPriority, sortBy]);
+  }, [scopedTasks, searchQuery, filterPriority, sortBy]);
 
-  const grouped = useMemo(() =>
-    STATUSES.reduce((acc, s) => {
-      acc[s] = filteredTasks.filter((t) => t.status === s);
-      return acc;
-    }, {}),
-  [filteredTasks]);
+  const grouped = useMemo(
+    () =>
+      STATUSES.reduce((acc, s) => {
+        acc[s] = filteredTasks.filter((t) => t.status === s);
+        return acc;
+      }, {}),
+    [filteredTasks]
+  );
 
-  const isCreator = (task) =>
-    task.assignedBy?.toString() === user?._id?.toString();
-
-  const myTasksCount = tasks.filter(
-    (t) => t.assignedToUsername === user?.username
-  ).length;
-
-  const activeFilters =
-    (filterMember   !== "all" ? 1 : 0) +
-    (filterPriority !== "all" ? 1 : 0) +
-    (searchQuery.trim()       ? 1 : 0);
-
+  const activeFilters = (filterPriority !== "all" ? 1 : 0) + (searchQuery.trim() ? 1 : 0);
   const clearFilters = () => {
-    setFilterMember("all");
     setFilterPriority("all");
     setSearchQuery("");
     setSortBy("newest");
@@ -190,118 +194,35 @@ export default function TaskView({ workspaceId }) {
 
   return (
     <div className="task-container">
-      <div className="task-sidebar">
-        <div className="task-sidebar-header">
-          <h3>New Task</h3>
-        </div>
-
-        <div className="task-form">
-          {error && <div className="task-error">{error}</div>}
-
-          <div className="task-field">
-            <label>Title</label>
-            <input
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="What needs to be done?"
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            />
-          </div>
-
-          <div className="task-field">
-            <label>Description <span className="task-optional">(optional)</span></label>
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Add more details..."
-              rows={3}
-            />
-          </div>
-
-          <div className="task-field">
-            <label>Assign To</label>
-            <select
-              value={form.assignedToId}
-              onChange={(e) => setForm({ ...form, assignedToId: e.target.value })}
-            >
-              <option value="">Myself</option>
-              {members
-                .filter((m) => m._id !== user?._id)
-                .map((m) => (
-                  <option key={m._id} value={m._id}>
-                    {m.username}
-                  </option>
-                ))}
-            </select>
-          </div>
-
-          <div className="task-field">
-            <label>Priority</label>
-            <div className="task-priority-row">
-              {["low", "medium", "high"].map((p) => (
-                <button
-                  key={p}
-                  className={`task-priority-btn ${p} ${form.priority === p ? "selected" : ""}`}
-                  onClick={() => setForm({ ...form, priority: p })}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button
-            className="task-create-btn"
-            onClick={handleCreate}
-            disabled={creating}
-          >
-            {creating ? "Creating..." : "+ Create Task"}
-          </button>
-        </div>
-
-        <div className="task-stats">
-          <div className="task-stats-header">Overview</div>
-          <div className="task-stat-row">
-            <span>Total</span>
-            <span className="task-stat-val">{tasks.length}</span>
-          </div>
-          <div className="task-stat-row">
-            <span>My Tasks</span>
-            <span className="task-stat-val highlight">{myTasksCount}</span>
-          </div>
-          <div className="task-stat-row">
-            <span className="dot-label pending">Pending</span>
-            <span className="task-stat-val">
-              {tasks.filter((t) => t.status === "pending").length}
-            </span>
-          </div>
-          <div className="task-stat-row">
-            <span className="dot-label inprogress">In Progress</span>
-            <span className="task-stat-val">
-              {tasks.filter((t) => t.status === "inprogress").length}
-            </span>
-          </div>
-          <div className="task-stat-row">
-            <span className="dot-label done">Done</span>
-            <span className="task-stat-val">
-              {tasks.filter((t) => t.status === "done").length}
-            </span>
-          </div>
-        </div>
-      </div>
-
       <div className="task-board">
         <div className="task-board-header">
-          <div className="task-board-title-row">
-            <h3>Task Board</h3>
+          <div className="task-tabs">
+            <button
+              className={`task-tab ${scope === "mine" ? "active" : ""}`}
+              onClick={() => setScope("mine")}
+            >
+              My Tasks
+            </button>
+            <button
+              className={`task-tab ${scope === "all" ? "active" : ""}`}
+              onClick={() => setScope("all")}
+            >
+              All Tasks
+            </button>
             <span className="task-count">
-              {filteredTasks.length} of {tasks.length}
+              {filteredTasks.length} of {scopedTasks.length}
             </span>
+            <button className="task-new-btn" onClick={openCreate}>
+              + New Task
+            </button>
           </div>
 
           <div className="task-filter-bar">
             <div className="task-search-wrap">
-              <span className="task-search-icon">🔍</span>
+              <svg className="task-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2" />
+              </svg>
               <input
                 className="task-search"
                 placeholder="Search tasks..."
@@ -309,27 +230,11 @@ export default function TaskView({ workspaceId }) {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               {searchQuery && (
-                <button
-                  className="task-search-clear"
-                  onClick={() => setSearchQuery("")}
-                >✕</button>
+                <button className="task-search-clear" onClick={() => setSearchQuery("")}>
+                  ×
+                </button>
               )}
             </div>
-
-            <select
-              className="task-filter-select"
-              value={filterMember}
-              onChange={(e) => setFilterMember(e.target.value)}
-            >
-              <option value="all">All Members</option>
-              {members.map((m) => (
-                <option key={m._id} value={m.username}>
-                  {m.username === user?.username
-                    ? `${m.username} (me)`
-                    : m.username}
-                </option>
-              ))}
-            </select>
 
             <select
               className="task-filter-select"
@@ -337,9 +242,9 @@ export default function TaskView({ workspaceId }) {
               onChange={(e) => setFilterPriority(e.target.value)}
             >
               <option value="all">All Priorities</option>
-              <option value="high">🔴 High</option>
-              <option value="medium">🟡 Medium</option>
-              <option value="low">🟢 Low</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
             </select>
 
             <select
@@ -347,10 +252,10 @@ export default function TaskView({ workspaceId }) {
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
             >
-              <option value="newest">↓ Newest</option>
-              <option value="oldest">↑ Oldest</option>
-              <option value="priority">⚡ Priority</option>
-              <option value="assignee">👤 Assignee</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="priority">Priority</option>
+              <option value="assignee">Assignee</option>
             </select>
 
             {activeFilters > 0 && (
@@ -358,43 +263,6 @@ export default function TaskView({ workspaceId }) {
                 Clear ({activeFilters})
               </button>
             )}
-          </div>
-
-          <div className="task-quick-filters">
-            <button
-              className={`task-quick-btn ${
-                filterMember === user?.username ? "active" : ""
-              }`}
-              onClick={() =>
-                setFilterMember(
-                  filterMember === user?.username ? "all" : user?.username
-                )
-              }
-            >
-              👤 My Tasks ({myTasksCount})
-            </button>
-            <button
-              className={`task-quick-btn ${
-                filterPriority === "high" ? "active" : ""
-              }`}
-              onClick={() =>
-                setFilterPriority(filterPriority === "high" ? "all" : "high")
-              }
-            >
-              🔴 High Priority (
-                {tasks.filter((t) => t.priority === "high").length}
-              )
-            </button>
-            <button
-              className={`task-quick-btn ${
-                sortBy === "priority" ? "active" : ""
-              }`}
-              onClick={() =>
-                setSortBy(sortBy === "priority" ? "newest" : "priority")
-              }
-            >
-              ⚡ Sort by Priority
-            </button>
           </div>
         </div>
 
@@ -412,56 +280,51 @@ export default function TaskView({ workspaceId }) {
 
                 <div className="task-cards">
                   {grouped[status].length === 0 && (
-                    <div className="task-empty">
-                      {activeFilters > 0 ? "No matches" : "No tasks"}
-                    </div>
+                    <div className="task-empty">{activeFilters > 0 ? "No matches" : "No tasks"}</div>
                   )}
 
                   {grouped[status].map((task) => (
-                    <div key={task._id} className="task-card">
+                    <div
+                      key={task._id}
+                      className="task-card"
+                      onClick={() => setDetailTask(task)}
+                    >
                       <div className="task-card-top">
                         <span className={`task-badge ${PRIORITY_COLOR[task.priority]}`}>
                           {task.priority}
                         </span>
-                        {isCreator(task) && (
-                          <button
-                            className="task-delete-btn"
-                            onClick={() => handleDelete(task._id)}
-                            title="Delete task"
-                          >
-                            ✕
-                          </button>
-                        )}
                       </div>
 
                       <div className="task-card-title">{task.title}</div>
-                      {task.description && (
-                        <div className="task-card-desc">{task.description}</div>
-                      )}
 
                       <div className="task-card-meta">
                         <span
-                          className={`task-assignee ${
+                          className={
                             task.assignedToUsername === user?.username
-                              ? "task-assignee-me"
-                              : ""
-                          }`}
+                              ? "task-assignee task-assignee-me"
+                              : "task-assignee"
+                          }
                         >
-                          👤 {task.assignedToUsername}
+                          {task.assignedToUsername}
                           {task.assignedToUsername === user?.username && " (me)"}
                         </span>
-                        <span>by {task.assignedByUsername}</span>
+                        {task.comments?.length > 0 && (
+                          <span className="task-comment-count">
+                            {task.comments.length} {task.comments.length === 1 ? "reply" : "replies"}
+                          </span>
+                        )}
                       </div>
 
                       <button
                         className={`task-status-btn status-${task.status}`}
-                        onClick={() =>
-                          handleStatusChange(task, STATUS_NEXT[task.status])
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStatusChange(task, STATUS_NEXT[task.status]);
+                        }}
                       >
-                        {task.status === "pending"    && "▶ Start"}
-                        {task.status === "inprogress" && "✓ Mark Done"}
-                        {task.status === "done"       && "↺ Reopen"}
+                        {task.status === "pending"    && "Start"}
+                        {task.status === "inprogress" && "Mark Done"}
+                        {task.status === "done"       && "Reopen"}
                       </button>
                     </div>
                   ))}
@@ -471,6 +334,30 @@ export default function TaskView({ workspaceId }) {
           </div>
         )}
       </div>
+
+      {showForm && (
+        <TaskFormModal
+          task={editingTask}
+          members={members}
+          currentUser={user}
+          onClose={() => { setShowForm(false); setEditingTask(null); }}
+          onSubmit={handleFormSubmit}
+        />
+      )}
+
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          apiUrl={apiUrl}
+          headers={headers}
+          canEdit={isCreator(detailTask)}
+          onClose={() => setDetailTask(null)}
+          onEdit={() => openEdit(detailTask)}
+          onDelete={() => handleDelete(detailTask._id)}
+          onStatusChange={(status) => handleStatusChange(detailTask, status)}
+          onCommentAdded={(comment) => handleCommentAdded(detailTask._id, comment)}
+        />
+      )}
     </div>
   );
 }
