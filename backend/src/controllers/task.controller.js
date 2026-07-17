@@ -42,7 +42,6 @@ exports.createTask = async (req, res) => {
     if (!workspace)
       return res.status(403).json({ message: "Access denied" });
 
-    // Resolve assignee — default to self
     const targetId = assignedToId || req.user.id;
     const assignee = await User.findById(targetId).select("username");
     if (!assignee)
@@ -59,12 +58,59 @@ exports.createTask = async (req, res) => {
       assignedBy:         creator._id,
       assignedByUsername: creator.username,
       priority:           priority || "medium",
-      status:             "pending"
+      status:             "pending",
+      comments:           []
     });
 
     res.json(task);
   } catch (err) {
     console.error("CREATE TASK ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ── UPDATE TASK (author-only edit) ─────────
+exports.updateTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { title, description, assignedToId, priority } = req.body;
+    const userId = req.user.id;
+
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    if (task.assignedBy.toString() !== userId)
+      return res.status(403).json({ message: "Only the task creator can edit it" });
+
+    const workspace = await verifyMember(task.workspaceId.toString(), userId);
+    if (!workspace)
+      return res.status(403).json({ message: "Access denied" });
+
+    if (title !== undefined) {
+      if (!title.trim()) return res.status(400).json({ message: "Title required" });
+      task.title = title.trim();
+    }
+
+    if (description !== undefined) {
+      task.description = description.trim();
+    }
+
+    if (priority !== undefined) {
+      task.priority = priority;
+    }
+
+    if (assignedToId !== undefined) {
+      const assignee = await User.findById(assignedToId || userId).select("username");
+      if (!assignee)
+        return res.status(404).json({ message: "Assignee not found" });
+      task.assignedTo         = assignee._id;
+      task.assignedToUsername = assignee.username;
+    }
+
+    await task.save();
+    res.json(task);
+  } catch (err) {
+    console.error("UPDATE TASK ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -83,7 +129,6 @@ exports.updateTaskStatus = async (req, res) => {
     const task = await Task.findById(taskId);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    // ✅ Anyone in the workspace can update status
     const workspace = await verifyMember(task.workspaceId.toString(), userId);
     if (!workspace)
       return res.status(403).json({ message: "Access denied" });
@@ -106,7 +151,6 @@ exports.deleteTask = async (req, res) => {
     const task = await Task.findById(taskId);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    // ✅ Only creator can delete
     if (task.assignedBy.toString() !== userId)
       return res.status(403).json({ message: "Only the task creator can delete it" });
 
@@ -118,7 +162,6 @@ exports.deleteTask = async (req, res) => {
 };
 
 // ── GET WORKSPACE MEMBERS ──────────────────
-// Used to populate assignee dropdown
 exports.getMembers = async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -132,6 +175,60 @@ exports.getMembers = async (req, res) => {
     }).select("_id username");
 
     res.json(members);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ── GET COMMENTS ────────────────────────────
+exports.getComments = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const userId = req.user.id;
+
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    const workspace = await verifyMember(task.workspaceId.toString(), userId);
+    if (!workspace)
+      return res.status(403).json({ message: "Access denied" });
+
+    res.json(task.comments || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ── ADD COMMENT (reply) ─────────────────────
+exports.addComment = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { body }    = req.body;
+    const userId      = req.user.id;
+
+    if (!body?.trim())
+      return res.status(400).json({ message: "Comment body required" });
+
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    const workspace = await verifyMember(task.workspaceId.toString(), userId);
+    if (!workspace)
+      return res.status(403).json({ message: "Access denied" });
+
+    const author = await User.findById(userId).select("username");
+
+    const comment = {
+      authorId:       author._id,
+      authorUsername: author.username,
+      body:           body.trim(),
+      createdAt:      new Date()
+    };
+
+    task.comments.push(comment);
+    await task.save();
+
+    res.json(task.comments[task.comments.length - 1]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -4,15 +4,21 @@ const auth    = require("../middleware/auth.middleware");
 const {
   getTasks,
   createTask,
+  updateTask,
   updateTaskStatus,
   deleteTask,
-  getMembers
+  getMembers,
+  getComments,
+  addComment
 } = require("../controllers/task.controller");
 
-router.get("/:workspaceId/members", auth, getMembers);
-router.get("/:workspaceId",         auth, getTasks);
-router.post("/",                    auth, createTask);
-router.patch("/:taskId/status",     auth, updateTaskStatus);
-router.delete("/:taskId",           auth, deleteTask);
+router.get("/:workspaceId/members",     auth, getMembers);
+router.get("/:workspaceId",             auth, getTasks);
+router.post("/",                        auth, createTask);
+router.patch("/:taskId",                auth, updateTask);
+router.patch("/:taskId/status",         auth, updateTaskStatus);
+router.delete("/:taskId",               auth, deleteTask);
+router.get("/:taskId/comments",         auth, getComments);
+router.post("/:taskId/comments",        auth, addComment);
 
 module.exports = router;
