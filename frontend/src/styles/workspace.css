@@ -3,7 +3,10 @@
 =========================== */
 .workspace {
   position: fixed;
-  inset: 0;
+  top: 30px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   flex-direction: row;
   background: #0f172a;
@@ -387,10 +390,10 @@
 .editor-empty .editor-empty-text { font-size: 13px; color: #334155; }
 
 /* ===========================
-   TERMINAL
+   TERMINAL PANEL (tabs + xterm)
 =========================== */
-.terminal {
-  height: 220px;
+.terminal-panel {
+  height: 260px;
   background: #020617;
   display: flex;
   flex-direction: column;
@@ -398,77 +401,111 @@
   flex-shrink: 0;
 }
 
-.terminal-header {
+.terminal-tabs {
   height: 32px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #334155;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  flex-shrink: 0;
   border-bottom: 1px solid rgba(255,255,255,0.04);
+  flex-shrink: 0;
+  overflow-x: auto;
 }
 
-.terminal-header button {
-  background: none;
-  border: none;
-  color: #334155;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: color 0.2s, background 0.2s;
-}
-
-.terminal-header button:hover {
-  color: #f87171;
-  background: rgba(248,113,113,0.1);
-}
-
-.terminal-output {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 14px;
-  font-size: 12px;
-  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
-  line-height: 1.6;
-  min-height: 0;
-  color: #94a3b8;
-}
-
-.terminal-output .terminal-line-error   { color: #f87171; }
-.terminal-output .terminal-line-success { color: #4ade80; }
-.terminal-output .terminal-line-cmd     { color: #60a5fa; }
-
-.terminal-input {
+.terminal-tab {
   display: flex;
   align-items: center;
-  padding: 6px 14px;
-  border-top: 1px solid rgba(255,255,255,0.04);
   gap: 8px;
-  flex-shrink: 0;
+  padding: 0 10px;
+  height: 100%;
+  font-size: 11px;
+  color: #475569;
+  cursor: pointer;
+  border-right: 1px solid rgba(255,255,255,0.04);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
 }
 
-.terminal-prompt {
-  color: #3b82f6;
-  font-size: 12px;
-  font-family: monospace;
-  flex-shrink: 0;
-}
+.terminal-tab:hover { background: rgba(255,255,255,0.04); color: #94a3b8; }
 
-.terminal-input input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
+.terminal-tab.active {
+  background: #0f172a;
   color: #e2e8f0;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.terminal-tab-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
   font-size: 12px;
-  font-family: "JetBrains Mono", "Fira Code", monospace;
+  opacity: 0.5;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.terminal-tab-close:hover { opacity: 1; color: #f87171; }
+
+.terminal-tab-add,
+.terminal-panel-close {
+  background: none;
+  border: none;
+  color: #475569;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 10px;
+  height: 100%;
+  transition: color 0.15s, background 0.15s;
+}
+
+.terminal-tab-add:hover { color: #60a5fa; background: rgba(59,130,246,0.1); }
+.terminal-panel-close:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+
+.terminal-tabs-spacer { flex: 1; }
+
+.terminal-instances {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.terminal-instance-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.terminal-xterm-container {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 8px;
+}
+
+/* MenuBar dropdown (Terminal → New Terminal) */
+.menubar-item-wrapper { position: relative; }
+
+.menubar-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #0f172a;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  min-width: 160px;
+  padding: 4px 0;
+  z-index: 9999;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+}
+
+.menubar-dropdown-item {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.menubar-dropdown-item:hover {
+  background: #1e293b;
+  color: #e2e8f0;
 }
 
 /* ===========================
@@ -775,6 +812,43 @@
   background: rgba(239,68,68,0.5);
 }
 
+/* ===========================
+   LOGIN REQUIRED (chat/tasks/call/video)
+=========================== */
+.login-required {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 24px;
+}
+
+.login-required-icon {
+  font-size: 32px;
+  opacity: 0.6;
+}
+
+.login-required h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.login-required p {
+  font-size: 13px;
+  color: #64748b;
+  max-width: 280px;
+  margin: 0;
+}
+
+.login-required .btn {
+  margin-top: 6px;
+}
 /* ===========================
    SCROLLBARS
 =========================== */

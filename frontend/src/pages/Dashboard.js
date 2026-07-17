@@ -3,10 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "../styles/dashboard.css";
 import * as api from "../api";
+
 function Dashboard() {
-  const apiUrl = process.env.REACT_APP_API_URL;
   const navigate = useNavigate();
-  const { user, token, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState([]);
   const [loading,    setLoading]    = useState(false);
 
@@ -19,87 +19,46 @@ function Dashboard() {
     setWorkspaces(data || []);
   };
 
-  const openWorkspace = async (ws) => {
-    if (!user) { navigate("/auth"); return; }
-
-    try {
-      setLoading(true);
-
-      // ✅ Pass workspaceId if stored locally so linkWorkspace
-      // fetches the exact document instead of searching by localPath
-      const linkRes = await fetch(`${apiUrl}/api/workspace/link`, {
-        method:  "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:  "Bearer " + token
-        },
-        body: JSON.stringify({
-          localPath:   ws.path,
-          name:        ws.name,
-          workspaceId: ws.workspaceId || null  // ✅ pass stored id
-        })
-      });
-
-      const workspace = await linkRes.json();
-      if (!workspace._id) { alert("Failed to open workspace"); return; }
-
-      navigate(`/workspace/${workspace._id}`, {
-        state: {
-          path:        ws.path,
-          repoPath:    ws.repoPath || ws.path,
-          name:        ws.name,
-          workspaceId: workspace._id,
-          joinCode:    workspace.joinCode  // ✅ always from DB
-        }
-      });
-    } catch (err) {
-      console.error(err);
-      alert("Server error");
-    } finally {
-      setLoading(false);
-    }
+  // 🚀 Opens instantly using local data only. No backend round-trip,
+  // no login requirement — the workspace itself is entirely local.
+  // If you're logged in, WorkspaceHome links/refreshes the backend
+  // record for you in the background (for join codes, chat, etc.)
+  // without blocking anything here.
+  const openWorkspace = (ws) => {
+    navigate(`/workspace/${ws.workspaceId || "pending"}`, {
+      state: {
+        path:        ws.path,
+        repoPath:    ws.repoPath || ws.path,
+        name:        ws.name,
+        workspaceId: ws.workspaceId || null
+      }
+    });
   };
 
   const openExisting = async () => {
-    if (!user) { navigate("/auth"); return; }
-
     try {
       setLoading(true);
+
+      // Native folder dialog + local workspace.json read — no network.
       const res = await api.openWorkspaceFolder();
       if (!res || !res.success) {
         if (res?.error) alert(res.error);
         return;
       }
 
-      const linkRes = await fetch(`${apiUrl}/api/workspace/link`, {
-        method:  "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:  "Bearer " + token
-        },
-        body: JSON.stringify({
-          localPath: res.path,
-          name:      res.name
-        })
-      });
-
-      const workspace = await linkRes.json();
-      if (!workspace._id) { alert("Failed to link workspace"); return; }
-
       await loadWorkspaces();
 
-      navigate(`/workspace/${workspace._id}`, {
+      navigate(`/workspace/pending`, {
         state: {
           path:        res.path,
           repoPath:    res.repoPath || res.path,
           name:        res.name,
-          workspaceId: workspace._id,
-          joinCode:    workspace.joinCode  // ✅ always from DB
+          workspaceId: null
         }
       });
     } catch (err) {
       console.error(err);
-      alert("Server error");
+      alert("Something went wrong opening the folder");
     } finally {
       setLoading(false);
     }

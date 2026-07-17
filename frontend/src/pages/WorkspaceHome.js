@@ -1,14 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
-import { invoke } from "@tauri-apps/api/core";
 
 import ActivityBar       from "../components/ActivityBar";
 import Sidebar           from "../components/Sidebar";
 import Editor            from "../components/Editor";
 import ContextMenu       from "../components/ContextMenu";
-import Terminal          from "../components/Terminal";
+import TerminalPanel     from "../components/TerminalPanel";
 import ChatView          from "../components/ChatView";
 import CallView          from "../components/CallView";
 import VideoView         from "../components/VideoView";
@@ -21,14 +20,30 @@ import * as api from "../api";
 import "../styles/workspace.css";
 
 const apiUrl = process.env.REACT_APP_API_URL;
+
+function LoginRequired({ feature }) {
+  const navigate = useNavigate();
+  return (
+    <div className="login-required">
+      <div className="login-required-icon">🔒</div>
+      <h3>Log in to use {feature}</h3>
+      <p>This feature needs an account so your team can see it too.</p>
+      <button className="btn btn-primary" onClick={() => navigate("/auth")}>
+        Log In
+      </button>
+    </div>
+  );
+}
+
 function WorkspaceHome() {
   const { state }  = useLocation();
-  const { id }     = useParams();
   const navigate   = useNavigate();
   const { token, user } = useAuth();
-  
-  const workspaceId = id;
-  const rootPath    = state?.repoPath || state?.path;
+
+  const rootPath = state?.repoPath || state?.path;
+
+  const [workspaceId, setWorkspaceId] = useState(state?.workspaceId || null);
+  const [dbWorkspace, setDbWorkspace] = useState(null);
 
   // ── File tree ────────────────────────────
   const [tree,         setTree]         = useState([]);
@@ -39,9 +54,8 @@ function WorkspaceHome() {
 
   // ── UI state ─────────────────────────────
   const [activeView,   setActiveView]   = useState("explorer");
-  const [showTerminal, setShowTerminal] = useState(true);
+  const [showTerminal, setShowTerminal] = useState(false);
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
-  const [dbWorkspace,  setDbWorkspace]  = useState(null);
   const [contextMenu,  setContextMenu]  = useState({
     visible: false, x: 0, y: 0, node: null
   });
@@ -49,10 +63,7 @@ function WorkspaceHome() {
   // ── Call state ───────────────────────────
   const socketRef   = useRef(null);
   const [callNotif, setCallNotif] = useState(null);
-  // callNotif = { participants, workspaceId, callType } | null
 
-  // 🖥️ Chat toast stack — separate from callNotif so the call-notif
-  // logic below is untouched, chat toasts just stack alongside it.
   const [chatToasts, setChatToasts] = useState([]);
   const chatToastIdRef = useRef(0);
 
@@ -60,50 +71,87 @@ function WorkspaceHome() {
     setChatToasts((prev) => prev.filter((t) => t.id !== toastId));
   }, []);
 
-  // 🖥️ Autostart toggle state
-  const [autostartOn, setAutostartOn] = useState(false);
+  // 🖥️ Terminal panel ref — lets the MenuBar's "New Terminal" event
+  // trigger a new tab inside the panel.
+  const terminalPanelRef = useRef(null);
 
-  // ── Unused but needed for setters ───────
   const [, setTreeLoading] = useState(false); // eslint-disable-line no-unused-vars
   const [, setSelectedDir] = useState(null);  // eslint-disable-line no-unused-vars
 
-  // ── Fetch workspace from DB ──────────────
-  useEffect(() => {
-    if (!workspaceId || !token) return;
-    fetch(`${apiUrl}/api/workspace/${workspaceId}`, {
-      headers: { Authorization: "Bearer " + token }
-    })
-      .then((r) => r.json())
-      .then((data) => { if (data._id) setDbWorkspace(data); })
-      .catch(console.error);
-  }, [workspaceId, token]);
-
-  const joinCode = dbWorkspace?.joinCode || state?.joinCode;
-
-  // ── Redirect if no rootPath ──────────────
   useEffect(() => {
     if (!rootPath) navigate("/", { replace: true });
   }, [rootPath, navigate]);
 
-  // ── 🖥️ Notifications: request permission + fetch autostart state ──
+  const fallbackName = rootPath?.split(/[\\/]/).pop() || "Workspace";
+  const workspaceName = dbWorkspace?.name || state?.name || fallbackName;
+  const joinCode = dbWorkspace?.joinCode || state?.joinCode;
+
+  useEffect(() => {
+    if (!token || workspaceId || !rootPath) return;
+    let cancelled = false;
+
+    fetch(`${apiUrl}/api/workspace/link`, {
+      method:  "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization:  "Bearer " + token
+      },
+      body: JSON.stringify({
+        localPath: rootPath,
+        name:      state?.name || fallbackName
+      })
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data._id) return;
+        setWorkspaceId(data._id);
+        setDbWorkspace(data);
+        api.saveWorkspaceId(rootPath, data._id).catch(() => {});
+      })
+      .catch((err) => console.error("Background workspace link failed:", err));
+
+    return () => { cancelled = true; };
+  }, [token, workspaceId, rootPath, state?.name, fallbackName]);
+
+  useEffect(() => {
+    if (!workspaceId || !token || dbWorkspace) return;
+    let cancelled = false;
+
+    fetch(`${apiUrl}/api/workspace/${workspaceId}`, {
+      headers: { Authorization: "Bearer " + token }
+    })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled && data._id) setDbWorkspace(data); })
+      .catch(console.error);
+
+    return () => { cancelled = true; };
+  }, [workspaceId, token, dbWorkspace]);
+
   useEffect(() => {
     initNotifications();
-    invoke("get_autostart")
-      .then(setAutostartOn)
-      .catch((err) => console.error("get_autostart error:", err));
   }, []);
 
-  const toggleAutostart = async () => {
-    try {
-      const next = !autostartOn;
-      await invoke("set_autostart", { enabled: next });
-      setAutostartOn(next);
-    } catch (err) {
-      console.error("set_autostart error:", err);
-    }
-  };
+  // ── 🖥️ Listen for MenuBar's "New Terminal" event ─────────
+  // FIX: TerminalPanel already creates its own first terminal on
+  // mount. Previously we always called addTerminal() after opening
+  // the panel, which meant the very first "New Terminal" click
+  // produced two shells (one from the panel's initial state, one
+  // from addTerminal()). Now we only call addTerminal() when the
+  // panel is already open/mounted.
+  useEffect(() => {
+    const handleNewTerminal = () => {
+      setShowTerminal((prevShown) => {
+        if (prevShown) {
+          terminalPanelRef.current?.addTerminal();
+        }
+        return true;
+      });
+    };
+    window.addEventListener("converge:new-terminal", handleNewTerminal);
+    return () => window.removeEventListener("converge:new-terminal", handleNewTerminal);
+  }, []);
 
-  // ── Workspace socket for call notifications
+  // ── Workspace socket for call/chat notifications ─────────
   useEffect(() => {
     if (!token || !workspaceId) return;
 
@@ -117,35 +165,27 @@ function WorkspaceHome() {
       socket.emit("join-workspace", { workspaceId });
     });
 
-    // Show notification when a call becomes active
     socket.on("call-active", ({ participants, workspaceId: wid }) => {
       if (!participants || participants.length === 0) return;
 
       const callType = participants[0]?.callType || "audio";
 
-      // Don't show notification if already in call view
       setActiveView((current) => {
         if (current === "call" || current === "video") return current;
         setCallNotif({ participants, workspaceId: wid, callType });
         return current;
       });
 
-      // 🖥️ Native OS toast if the window isn't focused right now
       notifyIfUnfocused(
         `${callType === "video" ? "Video" : "Voice"} call started`,
         participants.map((p) => p.username).join(", ")
       );
     });
 
-    // Hide notification when call ends
     socket.on("call-ended", () => {
       setCallNotif(null);
     });
 
-    // 🖥️ Chat notifications — this socket already joined the workspace
-    // room via join-workspace, so it receives receive-message broadcasts
-    // the same as ChatView does. Skip our own messages and skip the
-    // toast (but not the OS notification) if Chat is already open.
     socket.on("receive-message", (msg) => {
       if (!msg || !user) return;
       const isOwn = String(msg.userId) === String(user.id);
@@ -338,10 +378,6 @@ function WorkspaceHome() {
     }
   };
 
-  const workspaceName = dbWorkspace?.name
-    || rootPath?.split(/[\\/]/).pop()
-    || "Workspace";
-
   if (!rootPath) {
     return (
       <div style={{
@@ -359,7 +395,6 @@ function WorkspaceHome() {
   return (
     <div className="workspace">
 
-      {/* ACTIVITY BAR */}
       <ActivityBar
         active={activeView}
         setActive={setActiveView}
@@ -367,7 +402,6 @@ function WorkspaceHome() {
         setSidebarOpen={setSidebarOpen}
       />
 
-      {/* SIDEBAR — always visible */}
       <Sidebar
         tree={tree}
         expanded={expanded}
@@ -378,10 +412,8 @@ function WorkspaceHome() {
         open={sidebarOpen}
       />
 
-      {/* MAIN AREA */}
       <div className="main-area">
 
-        {/* TOPBAR */}
         <div className="topbar">
           <div className="topbar-left">
             <span className="workspace-name">{workspaceName}</span>
@@ -394,26 +426,12 @@ function WorkspaceHome() {
           </div>
 
           <div className="topbar-actions">
-            <button
-              className={`topbar-btn ${autostartOn ? "active" : ""}`}
-              onClick={toggleAutostart}
-              title="Launch Converge when Windows starts"
-            >
-              🚀 Autostart {autostartOn ? "On" : "Off"}
-            </button>
-            <button
-              className={`topbar-btn ${showTerminal ? "active" : ""}`}
-              onClick={() => setShowTerminal((v) => !v)}
-            >
-              ⌨ Terminal
-            </button>
             <button className="topbar-btn" onClick={() => navigate("/")}>
               ← Home
             </button>
           </div>
         </div>
 
-        {/* CONTENT AREA */}
         <div className="editor-area">
           {activeView === "explorer" && (
             <Editor
@@ -427,40 +445,39 @@ function WorkspaceHome() {
           )}
 
           {activeView === "chat" && (
-            <ChatView workspaceId={workspaceId} />
+            user
+              ? <ChatView workspaceId={workspaceId} />
+              : <LoginRequired feature="chat" />
           )}
 
           {activeView === "tasks" && (
-            <TaskView workspaceId={workspaceId} />
+            user
+              ? <TaskView workspaceId={workspaceId} />
+              : <LoginRequired feature="tasks" />
           )}
 
           {activeView === "call" && (
-            <CallView
-              socket={socketRef.current}
-              workspaceId={workspaceId}
-              user={user}
-            />
+            user
+              ? <CallView socket={socketRef.current} workspaceId={workspaceId} user={user} />
+              : <LoginRequired feature="voice calls" />
           )}
 
           {activeView === "video" && (
-            <VideoView
-              socket={socketRef.current}
-              workspaceId={workspaceId}
-              user={user}
-            />
+            user
+              ? <VideoView socket={socketRef.current} workspaceId={workspaceId} user={user} />
+              : <LoginRequired feature="video calls" />
           )}
         </div>
 
-        {/* TERMINAL */}
         {showTerminal && (
-          <Terminal
+          <TerminalPanel
+            ref={terminalPanelRef}
             rootPath={rootPath}
             onClose={() => setShowTerminal(false)}
           />
         )}
       </div>
 
-      {/* CONTEXT MENU */}
       <ContextMenu
         x={contextMenu.x}
         y={contextMenu.y}
@@ -472,7 +489,6 @@ function WorkspaceHome() {
         onDelete={handleDelete}
       />
 
-      {/* 🖥️ NOTIFICATION TOAST STACK — call notif + chat toasts */}
       <div className="toast-stack">
         {callNotif && (
           <NotificationToast
