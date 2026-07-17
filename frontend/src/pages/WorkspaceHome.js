@@ -42,10 +42,6 @@ function WorkspaceHome() {
 
   const rootPath = state?.repoPath || state?.path;
 
-  // 🖥️ The backend workspace id may not exist yet (offline / just
-  // created / never linked). We start from whatever we already know
-  // locally and fill it in the background once logged in — nothing
-  // here blocks the workspace from opening and being usable.
   const [workspaceId, setWorkspaceId] = useState(state?.workspaceId || null);
   const [dbWorkspace, setDbWorkspace] = useState(null);
 
@@ -67,10 +63,7 @@ function WorkspaceHome() {
   // ── Call state ───────────────────────────
   const socketRef   = useRef(null);
   const [callNotif, setCallNotif] = useState(null);
-  // callNotif = { participants, workspaceId, callType } | null
 
-  // 🖥️ Chat toast stack — separate from callNotif so the call-notif
-  // logic below is untouched, chat toasts just stack alongside it.
   const [chatToasts, setChatToasts] = useState([]);
   const chatToastIdRef = useRef(0);
 
@@ -82,11 +75,9 @@ function WorkspaceHome() {
   // trigger a new tab inside the panel.
   const terminalPanelRef = useRef(null);
 
-  // ── Unused but needed for setters ───────
   const [, setTreeLoading] = useState(false); // eslint-disable-line no-unused-vars
   const [, setSelectedDir] = useState(null);  // eslint-disable-line no-unused-vars
 
-  // ── Redirect if no rootPath ──────────────
   useEffect(() => {
     if (!rootPath) navigate("/", { replace: true });
   }, [rootPath, navigate]);
@@ -95,9 +86,6 @@ function WorkspaceHome() {
   const workspaceName = dbWorkspace?.name || state?.name || fallbackName;
   const joinCode = dbWorkspace?.joinCode || state?.joinCode;
 
-  // ── 🌐 Background: link (or create) the backend record if we're
-  // logged in but don't have a workspace id yet. Never blocks
-  // anything — the editor/tree/terminal are already usable locally.
   useEffect(() => {
     if (!token || workspaceId || !rootPath) return;
     let cancelled = false;
@@ -125,8 +113,6 @@ function WorkspaceHome() {
     return () => { cancelled = true; };
   }, [token, workspaceId, rootPath, state?.name, fallbackName]);
 
-  // ── 🌐 Background: fetch join code / latest info once we do have
-  // an id (e.g. it was already cached locally from a previous open).
   useEffect(() => {
     if (!workspaceId || !token || dbWorkspace) return;
     let cancelled = false;
@@ -141,24 +127,31 @@ function WorkspaceHome() {
     return () => { cancelled = true; };
   }, [workspaceId, token, dbWorkspace]);
 
-  // ── 🖥️ Notifications ────────────────────────
   useEffect(() => {
     initNotifications();
   }, []);
 
   // ── 🖥️ Listen for MenuBar's "New Terminal" event ─────────
+  // FIX: TerminalPanel already creates its own first terminal on
+  // mount. Previously we always called addTerminal() after opening
+  // the panel, which meant the very first "New Terminal" click
+  // produced two shells (one from the panel's initial state, one
+  // from addTerminal()). Now we only call addTerminal() when the
+  // panel is already open/mounted.
   useEffect(() => {
     const handleNewTerminal = () => {
-      setShowTerminal(true);
-      setTimeout(() => terminalPanelRef.current?.addTerminal(), 0);
+      setShowTerminal((prevShown) => {
+        if (prevShown) {
+          terminalPanelRef.current?.addTerminal();
+        }
+        return true;
+      });
     };
     window.addEventListener("converge:new-terminal", handleNewTerminal);
     return () => window.removeEventListener("converge:new-terminal", handleNewTerminal);
   }, []);
 
   // ── Workspace socket for call/chat notifications ─────────
-  // Only connects once we're logged in AND have a real backend id —
-  // nothing here can block the workspace from being open and usable.
   useEffect(() => {
     if (!token || !workspaceId) return;
 
@@ -402,7 +395,6 @@ function WorkspaceHome() {
   return (
     <div className="workspace">
 
-      {/* ACTIVITY BAR */}
       <ActivityBar
         active={activeView}
         setActive={setActiveView}
@@ -410,7 +402,6 @@ function WorkspaceHome() {
         setSidebarOpen={setSidebarOpen}
       />
 
-      {/* SIDEBAR — always visible */}
       <Sidebar
         tree={tree}
         expanded={expanded}
@@ -421,10 +412,8 @@ function WorkspaceHome() {
         open={sidebarOpen}
       />
 
-      {/* MAIN AREA */}
       <div className="main-area">
 
-        {/* TOPBAR */}
         <div className="topbar">
           <div className="topbar-left">
             <span className="workspace-name">{workspaceName}</span>
@@ -443,7 +432,6 @@ function WorkspaceHome() {
           </div>
         </div>
 
-        {/* CONTENT AREA */}
         <div className="editor-area">
           {activeView === "explorer" && (
             <Editor
@@ -481,7 +469,6 @@ function WorkspaceHome() {
           )}
         </div>
 
-        {/* TERMINAL */}
         {showTerminal && (
           <TerminalPanel
             ref={terminalPanelRef}
@@ -491,7 +478,6 @@ function WorkspaceHome() {
         )}
       </div>
 
-      {/* CONTEXT MENU */}
       <ContextMenu
         x={contextMenu.x}
         y={contextMenu.y}
@@ -503,7 +489,6 @@ function WorkspaceHome() {
         onDelete={handleDelete}
       />
 
-      {/* 🖥️ NOTIFICATION TOAST STACK — call notif + chat toasts */}
       <div className="toast-stack">
         {callNotif && (
           <NotificationToast
