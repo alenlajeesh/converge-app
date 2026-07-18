@@ -127,6 +127,8 @@ npm run frontend
 npx wait-on http://localhost:3000 && npm run tauri:dev
 ```
 
+Note - Do not forget to add the .env file.
+
 ## 📄 License
 
 MIT
