@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
+import "../styles/chatview.css";
 const apiUrl = process.env.REACT_APP_API_URL;
 export default function ChatView({ workspaceId }) {
   const { user, token } = useAuth();

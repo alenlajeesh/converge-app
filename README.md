@@ -2,6 +2,37 @@
 
 Converge is a desktop workspace that brings code editing, team chat, calls, and task management into one app — built for dev teams working on shared GitHub projects. Instead of switching between VS Code, Slack, and a task tracker, everything lives in a single lightweight window per workspace.
 
+## 📖 About
+
+Most dev teams end up stitching together a separate editor, chat app, video call tool, and task tracker just to get through a normal workday. Converge exists to close that gap by giving a team one shared space per project: open the workspace, and you get the code, the conversation, and the task board together, backed by the same real-time connection.
+
+It's built as a native desktop app rather than a website — using Tauri instead of Electron — so it stays lightweight while still getting real access to the local file system and terminal, things a browser-based tool can't do on its own. Under the hood it's a fairly standard MERN-style stack (MongoDB, Express, React, Node) for the backend and UI, with Socket.io handling anything that needs to happen live — chat, task updates, and call signaling — and WebRTC handling the actual audio/video peer-to-peer.
+
+This is a personal/learning project rather than a polished product, so expect some rough edges as features get built out.
+
+## 📸 Screenshots
+
+**Workspaces Dashboard** — open an existing workspace, create a new one, or join a teammate's via invite code.
+![Workspaces Dashboard](Images/image-1.png)
+
+**New Workspace** — set up a workspace by picking a local folder and (optionally) linking a GitHub repo.
+![New Workspace](Images/image-2.png)
+
+**Code Editor** — Monaco-powered editing with a familiar VS Code–like layout and file explorer.
+![Code Editor](Images/image-3.png)
+
+**Task Board** — Kanban-style tracking across Pending, In Progress, and Done.
+![Task Board](Images/image-4.png)
+
+**Voice Call** — quick peer-to-peer voice calls with mute/leave controls, no separate app needed.
+![Voice Call](Images/image-5.png)
+
+**Video Call & Screen Share** — video calls with live screen sharing for walking teammates through code.
+![Video Call](Images/image-6.png)
+
+**Team Chat** — real-time workspace chat for quick back-and-forth without leaving the app.
+![Team Chat](Images/image-7.png)
+
 ## ✨ Features
 
 - 🧑‍💻 **Shared Workspaces**
@@ -95,7 +126,7 @@ npm run backend
 npm run frontend
 npx wait-on http://localhost:3000 && npm run tauri:dev
 ```
-Note - MAke sure to make the .env too.  
+
 ## 📄 License
 
 MIT
