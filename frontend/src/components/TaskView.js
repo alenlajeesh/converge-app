@@ -138,6 +138,21 @@ export default function TaskView({ workspaceId }) {
     );
   };
 
+  const handleCommentDeleted = (taskId, commentId) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t._id === taskId
+          ? { ...t, comments: (t.comments || []).filter((c) => c._id !== commentId) }
+          : t
+      )
+    );
+    setDetailTask((prev) =>
+      prev && prev._id === taskId
+        ? { ...prev, comments: (prev.comments || []).filter((c) => c._id !== commentId) }
+        : prev
+    );
+  };
+
   const isCreator = (task) => task.assignedBy?.toString() === user?._id?.toString();
 
   // ── derived lists ──────────────────────────────
@@ -350,12 +365,14 @@ export default function TaskView({ workspaceId }) {
           task={detailTask}
           apiUrl={apiUrl}
           headers={headers}
+          currentUser={user}
           canEdit={isCreator(detailTask)}
           onClose={() => setDetailTask(null)}
           onEdit={() => openEdit(detailTask)}
           onDelete={() => handleDelete(detailTask._id)}
           onStatusChange={(status) => handleStatusChange(detailTask, status)}
           onCommentAdded={(comment) => handleCommentAdded(detailTask._id, comment)}
+          onCommentDeleted={(commentId) => handleCommentDeleted(detailTask._id, commentId)}
         />
       )}
     </div>

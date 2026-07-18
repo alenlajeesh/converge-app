@@ -233,3 +233,35 @@ exports.addComment = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// ── DELETE COMMENT ──────────────────────────
+exports.deleteComment = async (req, res) => {
+  try {
+    const { taskId, commentId } = req.params;
+    const userId = req.user.id;
+
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    const workspace = await verifyMember(task.workspaceId.toString(), userId);
+    if (!workspace)
+      return res.status(403).json({ message: "Access denied" });
+
+    const comment = task.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: "Comment not found" });
+
+    const isCommentAuthor = comment.authorId.toString() === userId;
+    const isTaskCreator   = task.assignedBy.toString() === userId;
+
+    if (!isCommentAuthor && !isTaskCreator)
+      return res.status(403).json({ message: "Only the comment author or task creator can delete this reply" });
+
+    comment.deleteOne(); // subdocument removal
+    await task.save();
+
+    res.json({ success: true, commentId });
+  } catch (err) {
+    console.error("DELETE COMMENT ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
