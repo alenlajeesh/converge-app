@@ -4,8 +4,8 @@ const STATUS_LABEL = { pending: "Pending", inprogress: "In Progress", done: "Don
 const STATUS_NEXT  = { pending: "inprogress", inprogress: "done", done: "pending" };
 
 export default function TaskDetailModal({
-  task, apiUrl, headers,
-  canEdit, onClose, onEdit, onDelete, onStatusChange, onCommentAdded
+  task, apiUrl, headers, currentUser,
+  canEdit, onClose, onEdit, onDelete, onStatusChange, onCommentAdded, onCommentDeleted
 }) {
   const [comments, setComments] = useState(task.comments || []);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -50,6 +50,22 @@ export default function TaskDetailModal({
       setError("Server error");
     } finally {
       setPosting(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    setError("");
+    try {
+      const r = await fetch(`${apiUrl}/api/tasks/${task._id}/comments/${commentId}`, {
+        method: "DELETE",
+        headers
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setError(data.message || "Failed to delete reply"); return; }
+      setComments((prev) => prev.filter((c) => c._id !== commentId));
+      onCommentDeleted(commentId);
+    } catch (e) {
+      setError("Server error");
     }
   };
 
@@ -103,19 +119,35 @@ export default function TaskDetailModal({
                 {comments.length === 0 && (
                   <div className="task-empty">No replies yet</div>
                 )}
-                {comments.map((c) => (
-                  <div key={c._id} className="task-comment">
-                    <div className="task-comment-header">
-                      <span className="task-comment-author">{c.authorUsername}</span>
-                      <span className="task-comment-time">
-                        {new Date(c.createdAt).toLocaleString(undefined, {
-                          month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
-                        })}
-                      </span>
+                {comments.map((c) => {
+                  const canDeleteComment =
+                    c.authorId?.toString() === currentUser?._id?.toString() || canEdit;
+
+                  return (
+                    <div key={c._id} className="task-comment">
+                      <div className="task-comment-header">
+                        <span className="task-comment-author">{c.authorUsername}</span>
+                        <div className="task-comment-header-right">
+                          <span className="task-comment-time">
+                            {new Date(c.createdAt).toLocaleString(undefined, {
+                              month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+                            })}
+                          </span>
+                          {canDeleteComment && (
+                            <button
+                              className="task-comment-delete-btn"
+                              onClick={() => handleDeleteComment(c._id)}
+                              title="Delete reply"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="task-comment-body">{c.body}</div>
                     </div>
-                    <div className="task-comment-body">{c.body}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

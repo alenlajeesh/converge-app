@@ -459,6 +459,58 @@ fn run_command(command: String, cwd: String) -> String {
 }
 
 // ─────────────────────────────────────────
+// 🎨 APP SETTINGS (theme, etc.)
+// ─────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AppSettings {
+    #[serde(default = "default_theme")]
+    pub theme: String, // "dark" | "light"
+}
+
+fn default_theme() -> String { "dark".to_string() }
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        AppSettings { theme: default_theme() }
+    }
+}
+
+fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
+    app.path().app_data_dir().unwrap().join("settings.json")
+}
+
+fn read_settings(app: &tauri::AppHandle) -> AppSettings {
+    let path = get_settings_path(app);
+    if !path.exists() { return AppSettings::default(); }
+    match fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => AppSettings::default(),
+    }
+}
+
+fn write_settings(app: &tauri::AppHandle, settings: &AppSettings) {
+    let path = get_settings_path(app);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(&path, serde_json::to_string_pretty(settings).unwrap());
+}
+
+#[tauri::command]
+fn get_theme(app: tauri::AppHandle) -> String {
+    read_settings(&app).theme
+}
+
+#[tauri::command]
+fn set_theme(app: tauri::AppHandle, theme: String) -> OpResult {
+    let mut settings = read_settings(&app);
+    settings.theme = theme;
+    write_settings(&app, &settings);
+    OpResult { success: true, error: None }
+}
+
+// ─────────────────────────────────────────
 // 🖥️ AUTOSTART (launch on Windows login)
 // ─────────────────────────────────────────
 
@@ -723,6 +775,8 @@ pub fn run() {
             write_to_pty,
             resize_pty,
             close_pty_session,
+            get_theme,
+            set_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
