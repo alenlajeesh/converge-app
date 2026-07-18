@@ -11,9 +11,92 @@ html, body, #root {
   width: 100%;
 }
 
+/* ===========================
+   THEME TOKENS — VS Code Dark+ / Light+
+=========================== */
+:root,
+:root[data-theme="dark"] {
+  --bg-app: #1e1e1e;
+  --bg-surface: #252526;
+  --bg-elevated: #2d2d2d;
+  --bg-hover: #37373d;
+
+  --border-subtle: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.14);
+  --border-rgb: 255,255,255;
+
+  --text-primary: #cccccc;
+  --text-secondary: #9d9d9d;
+  --text-tertiary: #808080;
+  --text-muted: #6a6a6a;
+  --text-faint: #5a5a5a;
+
+  --accent: #0e639c;
+  --accent-hover: #1177bb;
+  --accent-light: #3794ff;
+  --accent-lighter: #75beff;
+  --accent-strong: #0b4f7f;
+  --accent-rgb: 14,99,156;
+  --accent-hover-rgb: 17,119,187;
+  --accent-grad-1: #163d5c;
+  --accent-grad-2: #0e639c;
+
+  --danger: #f14c4c;
+  --danger-light: #f48771;
+  --danger-strong: #c72e2e;
+  --danger-rgb: 241,76,76;
+  --danger-strong-rgb: 199,46,46;
+
+  --success: #89d185;
+  --success-rgb: 137,209,133;
+
+  --warning: #cca700;
+  --warning-rgb: 204,167,0;
+}
+
+:root[data-theme="light"] {
+  --bg-app: #ffffff;
+  --bg-surface: #f3f3f3;
+  --bg-elevated: #e8e8e8;
+  --bg-hover: #e4e6f1;
+
+  --border-subtle: rgba(0,0,0,0.09);
+  --border-strong: rgba(0,0,0,0.16);
+  --border-rgb: 0,0,0;
+
+  --text-primary: #1e1e1e;
+  --text-secondary: #3b3b3b;
+  --text-tertiary: #5c5c5c;
+  --text-muted: #767676;
+  --text-faint: #a0a0a0;
+
+  --accent: #0078d4;
+  --accent-hover: #106ebe;
+  --accent-light: #005fb8;
+  --accent-lighter: #2b88d8;
+  --accent-strong: #0059ab;
+  --accent-rgb: 0,120,212;
+  --accent-hover-rgb: 16,110,190;
+  --accent-grad-1: #cfe4fb;
+  --accent-grad-2: #0078d4;
+
+  --danger: #d13438;
+  --danger-light: #e57373;
+  --danger-strong: #a4262c;
+  --danger-rgb: 209,52,56;
+  --danger-strong-rgb: 164,38,44;
+
+  --success: #388a34;
+  --success-rgb: 56,138,52;
+
+  --warning: #9d6b00;
+  --warning-rgb: 157,107,0;
+}
+
 /* BODY */
 body {
   font-family: "Inter", sans-serif;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  transition: background 0.15s ease, color 0.15s ease;
 }

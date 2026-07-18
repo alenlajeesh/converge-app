@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useTheme } from "../context/ThemeContext";
 import "../styles/menubar.css";
 
 const MENU_ITEMS = ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"];
@@ -8,6 +9,7 @@ const MENU_ITEMS = ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal"
 function MenuBar() {
   const [openMenu, setOpenMenu] = useState(null);
   const [autostartOn, setAutostartOn] = useState(false);
+  const { theme, toggleTheme } = useTheme();
   const wrapperRef = useRef(null);
 
   useEffect(() => {
@@ -46,6 +48,11 @@ function MenuBar() {
     setOpenMenu(null);
   };
 
+  const handleToggleTheme = () => {
+    toggleTheme();
+    setOpenMenu(null);
+  };
+
   const handleQuit = async () => {
     setOpenMenu(null);
     try {
@@ -78,6 +85,17 @@ function MenuBar() {
                 <div className="menubar-dropdown-divider" />
                 <div className="menubar-dropdown-item" onClick={handleQuit}>
                   <span>Quit</span>
+                </div>
+              </div>
+            )}
+
+            {item === "View" && openMenu === "View" && (
+              <div className="menubar-dropdown">
+                <div className="menubar-dropdown-item" onClick={handleToggleTheme}>
+                  <span>Light Mode</span>
+                  <span className="menubar-dropdown-check">
+                    {theme === "light" ? "✓" : ""}
+                  </span>
                 </div>
               </div>
             )}

@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0f172a;
+  background: var(--bg-app);
   overflow: hidden;
 }
 
@@ -14,8 +14,8 @@
 =========================== */
 .call-header {
   padding: 14px 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  background: #020617;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -35,14 +35,14 @@
 .call-header h3 {
   font-size: 14px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .call-header-sub {
   font-size: 11px;
-  color: #334155;
-  background: #0f172a;
+  color: var(--text-faint);
+  background: var(--bg-app);
   padding: 3px 8px;
   border-radius: 6px;
   font-family: monospace;
@@ -51,9 +51,9 @@
 .call-live-badge {
   font-size: 10px;
   font-weight: 700;
-  color: #4ade80;
-  background: rgba(74,222,128,0.1);
-  border: 1px solid rgba(74,222,128,0.25);
+  color: var(--success);
+  background: rgba(var(--success-rgb), 0.1);
+  border: 1px solid rgba(var(--success-rgb), 0.25);
   padding: 2px 8px;
   border-radius: 20px;
   letter-spacing: 0.05em;
@@ -79,10 +79,10 @@
 .call-error {
   margin: 12px 16px 0;
   padding: 10px 14px;
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.25);
+  background: rgba(var(--danger-rgb), 0.1);
+  border: 1px solid rgba(var(--danger-rgb), 0.25);
   border-radius: 8px;
-  color: #fca5a5;
+  color: var(--danger-light);
   font-size: 13px;
   flex-shrink: 0;
 }
@@ -108,21 +108,21 @@
 .call-join-screen h3 {
   font-size: 22px;
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--text-primary);
   margin: 0;
   letter-spacing: -0.02em;
 }
 
 .call-join-screen p {
   font-size: 13px;
-  color: #475569;
+  color: var(--text-muted);
   margin: 0;
 }
 
 .call-btn-join {
   margin-top: 8px;
   padding: 13px 36px;
-  background: #3b82f6;
+  background: var(--accent);
   border: none;
   border-radius: 12px;
   color: white;
@@ -133,9 +133,9 @@
 }
 
 .call-btn-join:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--accent-hover);
   transform: scale(1.03);
-  box-shadow: 0 8px 24px rgba(37,99,235,0.45);
+  box-shadow: 0 8px 24px rgba(var(--accent-hover-rgb), 0.45);
 }
 
 .call-btn-join:disabled {
@@ -164,23 +164,23 @@
   align-items: center;
   gap: 12px;
   padding: 24px 20px;
-  background: #020617;
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: 18px;
   min-width: 130px;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .call-participant.self {
-  border-color: rgba(59,130,246,0.3);
-  box-shadow: 0 0 20px rgba(59,130,246,0.08);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.08);
 }
 
 .call-avatar {
   width: 68px;
   height: 68px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+  background: linear-gradient(135deg, var(--accent-grad-1), var(--accent-grad-2));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -192,19 +192,19 @@
 
 .call-avatar.active {
   box-shadow:
-    0 0 0 3px #4ade80,
-    0 0 20px rgba(74,222,128,0.35);
+    0 0 0 3px var(--success),
+    0 0 20px rgba(var(--success-rgb), 0.35);
 }
 
 .call-avatar.muted {
   box-shadow:
-    0 0 0 3px #f87171,
-    0 0 20px rgba(248,113,113,0.2);
+    0 0 0 3px var(--danger-light),
+    0 0 20px rgba(var(--danger-rgb), 0.2);
 }
 
 .call-participant-name {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-weight: 500;
   text-align: center;
   max-width: 100px;
@@ -226,8 +226,8 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  background: #020617;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -237,10 +237,10 @@
   align-items: center;
   gap: 5px;
   padding: 13px 22px;
-  background: #1e293b;
-  border: 1px solid rgba(255,255,255,0.07);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: 14px;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 22px;
   cursor: pointer;
   transition: background 0.2s, color 0.2s, transform 0.15s, box-shadow 0.2s;
@@ -255,8 +255,8 @@
 }
 
 .call-ctrl-btn:hover {
-  background: #334155;
-  color: #e2e8f0;
+  background: var(--bg-hover);
+  color: var(--text-primary);
   transform: scale(1.06);
 }
 
@@ -267,27 +267,27 @@
 }
 
 .call-ctrl-btn.danger {
-  background: rgba(239,68,68,0.12);
-  border-color: rgba(239,68,68,0.25);
-  color: #f87171;
+  background: rgba(var(--danger-rgb), 0.12);
+  border-color: rgba(var(--danger-rgb), 0.25);
+  color: var(--danger-light);
 }
 
 .call-ctrl-btn.danger:hover {
-  background: rgba(239,68,68,0.22);
+  background: rgba(var(--danger-rgb), 0.22);
   transform: scale(1.06);
 }
 
 .call-ctrl-btn.end {
-  background: rgba(239,68,68,0.12);
-  border-color: rgba(239,68,68,0.25);
-  color: #f87171;
+  background: rgba(var(--danger-rgb), 0.12);
+  border-color: rgba(var(--danger-rgb), 0.25);
+  color: var(--danger-light);
 }
 
 .call-ctrl-btn.end:hover {
-  background: #ef4444;
+  background: var(--danger-strong);
   color: white;
-  border-color: #ef4444;
-  box-shadow: 0 6px 20px rgba(239,68,68,0.4);
+  border-color: var(--danger-strong);
+  box-shadow: 0 6px 20px rgba(var(--danger-strong-rgb), 0.4);
   transform: scale(1.06);
 }
 
@@ -301,10 +301,9 @@
   padding: 12px;
   min-height: 0;
   overflow: hidden;
-  background: #080f1e;
+  background: var(--bg-app);
 }
 
-/* Grid layouts based on participant count */
 .video-grid.participants-1 {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
@@ -336,8 +335,6 @@
 
 /* ===========================
    MEET-STYLE SPOTLIGHT LAYOUT
-   Activated only while someone (local or remote) is screen sharing.
-   Leaves .video-grid completely untouched for the no-share case.
 =========================== */
 .meet-stage {
   flex: 1;
@@ -346,7 +343,7 @@
   padding: 12px;
   min-height: 0;
   overflow: hidden;
-  background: #080f1e;
+  background: var(--bg-app);
 }
 
 .meet-spotlight {
@@ -376,7 +373,6 @@
   flex-shrink: 0;
 }
 
-/* Narrow windows: filmstrip becomes a horizontal strip under the spotlight */
 @media (max-width: 700px) {
   .meet-stage {
     flex-direction: column;
@@ -401,7 +397,7 @@
 .meet-filmstrip::-webkit-scrollbar { width: 4px; }
 .meet-filmstrip::-webkit-scrollbar-track { background: transparent; }
 .meet-filmstrip::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: var(--bg-elevated);
   border-radius: 2px;
 }
 
@@ -410,26 +406,20 @@
 =========================== */
 .video-tile {
   position: relative;
-  background: #020617;
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: 14px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: border-color 0.2s;
-  /* FIX: grid items default to min-width/min-height:auto, which sizes
-     the track to the video's INTRINSIC resolution instead of the 1fr
-     track size. A screen-share stream (e.g. 1920x1080) then blows the
-     grid out past its container, pushing the controls bar off-screen.
-     Forcing these to 0 makes the item respect the grid track instead
-     of growing to fit its content. */
   min-width: 0;
   min-height: 0;
 }
 
 .video-tile.self {
-  border-color: rgba(59,130,246,0.3);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 .video-tile video {
@@ -447,7 +437,7 @@
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+  background: linear-gradient(135deg, var(--accent-grad-1), var(--accent-grad-2));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -456,7 +446,6 @@
   color: white;
 }
 
-/* Smaller avatar for filmstrip tiles so it doesn't overflow the tile */
 .video-avatar.video-avatar-sm {
   width: 44px;
   height: 44px;
@@ -483,11 +472,6 @@
 /* ===========================
    SCREEN SHARE (voice call)
 =========================== */
-/* FIX: CallView.js references .screen-share-panel / .screen-share-tile /
-   .screen-share-label, but these had no rules at all. With no size
-   constraints, the raw screen-capture <video> rendered at native
-   resolution and pushed .call-participants / .call-controls out of the
-   clipped flex column below. */
 .screen-share-panel {
   display: flex;
   gap: 10px;
@@ -502,8 +486,8 @@
   min-width: 220px;
   max-width: 480px;
   height: 220px;
-  background: #020617;
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -539,18 +523,18 @@
 .call-participants::-webkit-scrollbar { width: 4px; }
 .call-participants::-webkit-scrollbar-track { background: transparent; }
 .call-participants::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: var(--bg-elevated);
   border-radius: 2px;
 }
 
 /* Speaking indicator */
 .video-tile {
-  border: 3px solid transparent; /* reserve space so nothing shifts */
+  border: 3px solid transparent;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .video-tile.speaking {
-  border-color: #22c55e;
-  box-shadow: 0 0 14px rgba(34, 197, 94, 0.65);
+  border-color: var(--success);
+  box-shadow: 0 0 14px rgba(var(--success-rgb), 0.65);
 }
 
 .call-avatar {
@@ -558,23 +542,19 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .call-avatar.speaking {
-  border-color: #22c55e;
-  box-shadow: 0 0 14px rgba(34, 197, 94, 0.65);
+  border-color: var(--success);
+  box-shadow: 0 0 14px rgba(var(--success-rgb), 0.65);
 }
 
 /* ===========================
    PIN + SCREEN-CONTENT TILES
 =========================== */
-
-/* Screen-share tiles inside the Meet-style stage show content, not a
-   face, so use contain instead of cover to avoid cropping. */
 .video-tile.self-screen video,
 .video-tile.remote-screen video {
   object-fit: contain;
   background: #000;
 }
 
-/* Clickable affordance on every tile that can be pinned */
 .video-tile,
 .call-participant {
   cursor: pointer;
@@ -582,7 +562,7 @@
 
 .video-tile.pinned,
 .call-participant.pinned {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
@@ -594,14 +574,11 @@
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
 }
 
-/* Audio-call avatar tile used inside the Meet-style filmstrip/spotlight
-   (CallView.js) -- reuses .video-tile sizing but centers a round avatar
-   like the plain .call-participant view instead of a <video>. */
 .video-tile.audio-tile {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #020617;
+  background: var(--bg-surface);
 }
 .video-tile.audio-tile .video-avatar {
   position: static;
