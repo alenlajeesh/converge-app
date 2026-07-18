@@ -1,311 +1,101 @@
 # Converge 🚀
 
-**A Collaborative Developer Workspace Desktop App**
-
-Converge is a powerful all-in-one desktop application designed for development teams to collaborate seamlessly on shared GitHub projects. It combines code editing, communication, and task management into a single unified workspace.
-
----
+Converge is a desktop workspace that brings code editing, team chat, calls, and task management into one app — built for dev teams working on shared GitHub projects. Instead of switching between VS Code, Slack, and a task tracker, everything lives in a single lightweight window per workspace.
 
 ## ✨ Features
 
-* 🧑‍💻 **Shared Workspaces**
-  Each workspace is linked to a GitHub repository where team members collaborate in real-time.
+- 🧑‍💻 **Shared Workspaces**
+  A workspace is linked to a GitHub repository and acts as the shared space for a team — everyone in it sees the same chat, tasks, and members. Workspaces map to a local project folder on each member's machine.
 
-* 🔗 **Invite-Based Collaboration**
-  Join teams instantly using a secure invite code.
+- 🔗 **Invite-Based Collaboration**
+  Every workspace gets a unique, stable join code (generated with `nanoid`) so teammates can hop in instantly without a formal invite flow. The code never changes, which keeps things in sync as the team grows.
 
-* 📝 **Code Editing**
-  Built-in Monaco Editor (VS Code–like experience).
+- 📝 **Built-In Code Editor**
+  Powered by Monaco (the same editor that runs VS Code), so editing files inside a workspace feels familiar — syntax highlighting, multi-file editing, and more.
 
-* 💬 **Real-Time Chat**
-  Workspace-based messaging powered by WebSockets.
+- 💬 **Real-Time Chat**
+  Each workspace has its own chat room, powered by Socket.io over WebSockets. Messages are scoped to the workspace and can be deleted.
 
-* 📞 **Audio & Video Calls**
-  Peer-to-peer communication using WebRTC.
+- 📞 **Audio & Video Calls**
+  Peer-to-peer calls via WebRTC, with the backend only handling signaling (offer/answer/ICE exchange) — actual audio/video never touches the server, keeping calls fast and load on the backend minimal.
 
-* 📋 **Task Management**
-  Kanban-style task board with assignment and status tracking.
+- 📋 **Task Board**
+  A Kanban-style board for managing work: create tasks, assign them to teammates, set priority (low/medium/high), and track status (pending → in progress → done).
 
-* 🖥️ **Integrated Terminal**
-  Run shell commands directly inside the workspace.
+- 🖥️ **Integrated Terminal**
+  Run shell commands directly inside the app without leaving the workspace, useful for quick git commands, builds, or scripts.
 
-* 📂 **File System Access**
-  Create, edit, delete, and manage project files locally.
-
----
+- 📂 **Local File System Access**
+  Since Converge is a native desktop app (not a browser sandbox), it can read, write, create, delete, and rename files directly on disk for the linked project folder.
 
 ## 🏗️ Tech Stack
 
-### Desktop Shell
+**Desktop Shell**
+- [Tauri v2](https://tauri.app/) — lightweight Rust-based desktop framework (apps are ~8–15MB vs Electron's ~150–200MB, since it uses the OS's native webview instead of bundling Chromium)
+- Rust — handles system-level operations (file system, terminal, IPC)
 
-* **Tauri v2** — lightweight desktop framework
-* **Rust** — backend for system-level operations
-* **webkit2gtk** (Linux), **WebView2** (Windows)
+**Frontend**
+- React (Create React App) + React Router v6
+- Monaco Editor
+- Socket.io-client (chat/real-time events)
+- simple-peer (WebRTC calls)
 
-### Frontend
-
-* React (Create React App)
-* React Router v6
-* Monaco Editor
-* Socket.io-client
-* simple-peer (WebRTC)
-* react-icons
-
-### Backend
-
-* Node.js + Express
-* Socket.io (real-time communication)
-* MongoDB + Mongoose
-* JWT Authentication
-* bcrypt (password hashing)
-* nanoid (invite codes)
-
-### CI/CD
-
-* GitHub Actions
-* Tauri Bundler (.deb, .rpm, .AppImage, .exe, .msi)
-
----
-
-## ⬇️ Download
-
-You can download the desktop application from the **GitHub Releases** section.
-
-* 🐧 Linux: `.deb`, `.rpm`, `.AppImage`
-* 🪟 Windows: `.exe`, `.msi`
-
-**Steps:**
-
-1. Go to the repository on GitHub
-2. Open the **Releases** section
-3. Download the latest version for your OS
-
----
+**Backend**
+- Node.js + Express (REST API)
+- Socket.io (chat & call signaling)
+- MongoDB + Mongoose (data storage)
+- JWT authentication + bcrypt password hashing
 
 ## 📁 Project Structure
 
 ```
 converge-app/
 ├── backend/
+│   └── src/
+│       ├── config/        # DB connection
+│       ├── controllers/   # auth, chat, task, workspace logic
+│       ├── middleware/    # auth middleware
+│       ├── models/        # User, Workspace, Message, Task
+│       ├── routes/        # REST API routes
+│       └── sockets/       # real-time chat/call events
 ├── frontend/
-├── src-tauri/
-├── .github/
-├── assets/
-└── package.json
+│   └── src/
+│       ├── components/    # Editor, ChatView, CallView, TaskView, Terminal, etc.
+│       ├── context/       # Auth & Theme context
+│       ├── hooks/         # custom hooks
+│       └── pages/         # Auth, Dashboard, CreateWorkspace, WorkspaceHome
+├── src-tauri/              # Rust desktop shell & IPC commands
+└── assets/
 ```
 
----
+## 🔌 How It Fits Together
 
-## 🗄️ Database Models
+- **Auth** — users register/log in, get a JWT, and the frontend stores it via `AuthContext`.
+- **Workspaces** — creating a workspace links a GitHub repo URL + a local folder; joining one uses the workspace's invite code.
+- **Realtime layer** — once inside a workspace, the client joins a Socket.io room scoped to that workspace ID, which powers chat, task updates, and call signaling.
+- **Desktop layer** — Tauri exposes IPC commands (`read_dir`, `read_file`, `write_file`, `run_command`, etc.) so the React frontend can interact with the local file system and terminal directly, something a normal web app can't do.
 
-### User
+## ⬇️ Download
 
-* username
-* email (unique)
-* passwordHash
+Grab the latest build for your OS from the [Releases](../../releases) page.
 
-### Workspace
+- 🐧 Linux: `.deb`, `.rpm`, `.AppImage`
+- 🪟 Windows: `.exe`, `.msi`
 
-* name
-* repoUrl
-* localPath
-* joinCode (unique)
-* members
-
-### Message
-
-* workspaceId
-* userId
-* username
-* message
-
-### Task
-
-* title, description
-* assignedTo / assignedBy
-* status: `pending | inprogress | done`
-* priority: `low | medium | high`
-
----
-
-## 🔌 API Endpoints
-
-### Auth (`/api/auth`)
-
-* `POST /register`
-* `POST /login`
-* `GET /me`
-
-### Workspace (`/api/workspace`)
-
-* `POST /create`
-* `POST /join`
-* `POST /link`
-* `GET /:id`
-
-### Chat (`/api/chat`)
-
-* `GET /:workspaceId`
-* `DELETE /:messageId`
-
-### Tasks (`/api/tasks`)
-
-* `GET /:workspaceId`
-* `GET /:workspaceId/members`
-* `POST /`
-* `PATCH /:taskId/status`
-* `DELETE /:taskId`
-
----
-
-## ⚡ Real-Time Socket Events
-
-### Chat
-
-* `join-workspace`
-* `send-message`
-* `receive-message`
-* `delete-message`
-* `message-deleted`
-
-### Calls (WebRTC Signaling)
-
-* `call-join`, `call-leave`
-* `call-offer`, `call-answer`
-* `call-ice-candidate`
-* `call-user-joined`, `call-user-left`
-
----
-
-## 🦀 Tauri IPC Commands
-
-* File system: `read_dir`, `read_file`, `write_file`
-* Workspace: `create_workspace`, `open_workspace_folder`
-* File ops: `create_file`, `delete_path`, `rename_path`
-* Terminal: `run_command`
-* Linking: `save_workspace_id`
-
----
-
-## 🧠 Key Design Decisions
-
-### Why Tauri?
-
-* Electron apps: ~150–200MB
-* Tauri apps: ~8–15MB
-* Uses native OS webview → significantly lighter
-
-### Why WebRTC?
-
-* Peer-to-peer media streaming
-* Backend only handles signaling → minimal server load
-
-### Workspace Architecture
-
-* Each workspace = single MongoDB document
-* Ensures all members share:
-
-  * chat
-  * tasks
-  * participants
-
-### Stable Invite Codes
-
-* Generated once using nanoid
-* Never changes → prevents sync issues
-
----
-
-## ⚠️ Known Limitations
-
-* Linux camera/mic requires `xdg-desktop-portal`
-* AppImage issues on newer Arch kernels
-* WebRTC may fail behind strict NAT (TURN server needed)
-* No screen sharing (planned)
-* No live collaborative editing yet (planned)
-
----
-
-## 🔐 Environment Variables
-
-### Backend (`backend/.env`)
-
-```
-PORT=5000
-MONGO_URI=mongodb://localhost:27017/converge
-JWT_SECRET=your_secret_here
-```
-
-### Frontend
-
-```
-REACT_APP_API_URL=https://your-backend-url.com
-```
-
----
-
-## 🛠️ Local Development Setup
+## 🛠️ Local Development
 
 ```bash
-# 1. Clone repo
 git clone https://github.com/alenlajeesh/converge-app
 cd converge-app
-
-# 2. Install dependencies
 npm install
 cd frontend && npm install && cd ..
 cd backend && npm install && cd ..
 
-# 3. Setup environment variables
-
-# 4. Start backend
 npm run backend
-
-# 5. Start frontend
 npm run frontend
-
-# 6. Start Tauri app
 npx wait-on http://localhost:3000 && npm run tauri:dev
 ```
 
----
-
-## 📦 Build
-
-```bash
-# Linux build
-npm run tauri:build
-
-# Release via GitHub Actions
-git tag v1.0.0
-git push origin v1.0.0
-```
-
----
-
-## 🚀 Future Roadmap
-
-* Screen sharing
-* Live collaborative editing (cursor sync)
-* TURN server integration for global WebRTC
-* Plugin/extensions system
-* Performance optimizations
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to open issues or submit pull requests.
-
----
-
 ## 📄 License
 
-MIT License
-
----
-
-## 💡 Vision
-
-Converge aims to become the **ultimate developer workspace**, combining the power of VS Code, Slack, and project management tools into a single lightweight desktop experience.
-
+MIT
